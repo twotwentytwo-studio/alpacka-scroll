@@ -117,6 +117,8 @@ Read-only on a column: `y`, `target`, `gap`, `max`, `span`, `progress`, `caught`
 - The target is clamped, not the eased position, so overscroll stores nothing. `gap` is target minus position: use it as the speed signal for a deformation.
 - With `loop`, each child wraps on its own around the content's length. Nothing is cloned.
 - With `whole`, one transform goes on `el` and its children are left alone, free to be animated by something else.
+- An element focused with the keyboard is brought into view by moving its column, by the nearest lap in a loop.
+- A native scroll on a box around a column (the browser showing a focused element, `scrollIntoView()`, find-in-page) is put back at once, so the DOM never drifts from the column. An axis with `overflow: auto` or `scroll` is left alone.
 - A column measures itself when its element or box resizes. A re-measure keeps whatever is on the reading line in place, and a column resting at an end stays at that end.
 
 ### For a WebGL layer

@@ -4,6 +4,9 @@
 export default async ({ evaluate, send, sleep }) => {
 	for (let i = 0; i < 50 && (await evaluate('typeof runTests')) !== 'function'; i++) await sleep(100)
 
+	/* a headless page has no focus, and without it no focus event fires */
+	await send('Emulation.setFocusEmulationEnabled', { enabled: true })
+
 	let failed = 0
 
 	for (const [label, value] of [['no motion preference', 'no-preference'], ['prefers-reduced-motion: reduce', 'reduce']]) {

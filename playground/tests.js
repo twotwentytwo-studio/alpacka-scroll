@@ -66,6 +66,15 @@ const make = async ({ scroll, cleanup }, columnOptions = {}, fixtureOptions = {}
 	return { ...fixture, col }
 }
 
+/* Make a fixture's children take focus: a hidden element takes none, and a
+   page without focus fires no focus events (in a browser tab, click the page
+   first; test-steps.mjs emulates it). */
+const focusable = (t, { box, kids }) => {
+	box.style.visibility = 'visible'
+	kids.forEach((k) => { k.tabIndex = 0 })
+	t.expect('the page has focus', document.hasFocus(), 'no focus: click the page, then run again')
+}
+
 /* what the GL mirror would read off each child, as plain values */
 const snapshot = (kids) => JSON.stringify(kids.map((k) => [k.style.transform, k._vrect ? { ...k._vrect } : null, !!k._parked]))
 
@@ -297,6 +306,76 @@ const checks = {
 			instance.destroy()
 			fixture.box.remove()
 		}
+	},
+
+	async 'a native scroll on the box is put back'(t) {
+		const { col, box, kids } = await make(t, { loop: false })
+
+		kids[9].scrollIntoView()
+		t.expect('the browser scrolls an overflow: hidden box', box.scrollTop > 0, box.scrollTop)
+
+		/* the scroll event is the browser's to deliver */
+		await settle()
+		t.step(2)
+		t.expect('put back, and the column has not moved', box.scrollTop === 0 && col.y === 0 && col.target === 0, { scrollTop: box.scrollTop, y: col.y, target: col.target })
+	},
+
+	async 'a focused child is brought into the box'(t) {
+		const fixture = await make(t, { loop: false })
+		const { col, box, kids } = fixture
+		const top = (k) => k.getBoundingClientRect().top - box.getBoundingClientRect().top
+
+		focusable(t, fixture)
+
+		/* travel first, so child 9 is parked under a transform 300px old: read
+		   off the DOM alone it would land at the far end, 710 */
+		col.to(300)
+		t.step(300)
+		kids[9].focus()
+		t.step(300)
+		t.expect('below the box: its far edge on the box\'s', near(col.y, 700, 0.5) && near(top(kids[9]), 300, 0.5), { y: col.y, top: top(kids[9]) })
+		t.expect('the box is not left scrolled', box.scrollTop === 0, box.scrollTop)
+
+		/* above the box, where no native scroll can reach */
+		kids[0].focus()
+		t.step(300)
+		t.expect('above the box: its leading edge on the box\'s', near(col.y, 10, 0.5) && near(top(kids[0]), 0, 0.5), { y: col.y, top: top(kids[0]) })
+
+		/* in the box already: nothing moves */
+		kids[1].focus()
+		t.step(300)
+		t.expect('in view: stays', near(col.y, 10, 0.5), col.y)
+	},
+
+	async 'a focused child in a loop comes by the nearest lap'(t) {
+		const fixture = await make(t)
+		const { col, box, kids } = fixture
+		const top = (k) => k.getBoundingClientRect().top - box.getBoundingClientRect().top
+
+		focusable(t, fixture)
+
+		/* child 9 stands 1000px down, or 120px up: up is nearer */
+		kids[9].focus()
+		t.step(300)
+		t.expect('came from above', near(col.y, 1000, 0.5) && near(top(kids[9]), 0, 0.5), { y: col.y, top: top(kids[9]) })
+		t.expect('the box is not left scrolled', box.scrollTop === 0, box.scrollTop)
+	},
+
+	async 'a focused element in a whole column is brought into the box'(t) {
+		const fixture = await make(t, { whole: true })
+		const { col, box, kids } = fixture
+		const top = (k) => k.getBoundingClientRect().top - box.getBoundingClientRect().top
+
+		focusable(t, fixture)
+
+		kids[9].focus()
+		t.step(300)
+		t.expect('its far edge on the box\'s', near(col.y, 700, 0.5) && near(top(kids[9]), 300, 0.5), { y: col.y, top: top(kids[9]) })
+		t.expect('the box is not left scrolled', box.scrollTop === 0, box.scrollTop)
+
+		kids[0].focus()
+		t.step(300)
+		t.expect('back up', near(col.y, 10, 0.5) && near(top(kids[0]), 0, 0.5), { y: col.y, top: top(kids[0]) })
 	},
 
 	async 'virtual() follows prefers-reduced-motion'(t) {

@@ -44,6 +44,16 @@ import type { Context } from './core.js'
  * With `grab`, a press on the box catches a coasting column where it stands,
  * and on touch keeps what it was still owed for a moment: a second flick the
  * same way picks the momentum back up, as a native list does.
+ *
+ * Nothing scrolls natively, but the browser still tries: focus,
+ * scrollIntoView() and find-in-page scroll an `overflow: hidden` box to show
+ * what they want, and the DOM then stands somewhere `current` and every
+ * `_vrect` know nothing of. Such a scroll on a box around the column is put
+ * back at once. Focus is the one of them the column answers itself: an
+ * element the keyboard focuses is brought into the box by moving the target,
+ * from where its child truly stands rather than where a parked child's last
+ * transform left it. That also reaches a child before the leading edge, where
+ * no native scroll can go. In a loop it goes by the nearest lap.
  */
 
 export type ColumnOptions = {
@@ -115,6 +125,9 @@ type Mark = { el: Child, through: number, laps: number, owed: number }
 const BANK_MS = 350
 const COAST_PX = 2
 
+/* an overflow that scrolls on purpose */
+const SCROLLS = new Set(['auto', 'scroll'])
+
 /* options that change nothing a measure would */
 const QUIET = new Set(['listen', 'ease', 'reach'])
 
@@ -149,6 +162,9 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 	let max = 0
 	let boxStart = 0
 	let boxSize = 0
+
+	/* the element's own start as laid out, with nothing of this column's on it */
+	let elStart = 0
 	let linePx = 0
 	let bleedPx = 0
 	let parkingPending = false
@@ -162,6 +178,9 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 	let bank: { owed: number, at: number } | null = null
 	let caught = false
 
+	/* what the keyboard has just focused in this column, until the next frame brings it into the box */
+	let focused: Element | null = null
+
 	/* whether the column had ends at its last measure, null before the first:
 	   only a column that has just switched from loop to ends can hold values
 	   laps away */
@@ -173,6 +192,9 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 	const sizeOf = (r: { width: number, height: number }) => (options.x ? r.width : r.height)
 	const translate = (p: number) => (options.x ? `translate3d(${-p}px, 0px, 0px)` : `translate3d(0px, ${-p}px, 0px)`)
 	const starts = () => slots.map((s) => startOf(s.rect) - boxStart)
+
+	/* how far a child is moved from its natural place: each on its own lap in a loop */
+	const offsetOf = (s: Slot) => (options.loop ? wrap(s.to + bleedPx - span, s.to + bleedPx, current) : current)
 
 	/* from one child's start to the next's, the last one's to the first's a lap on */
 	const pitch = (p: number[], i: number) => Math.max(1, (i + 1 < p.length ? p[i + 1]! : p[0]! + span) - p[i]!)
@@ -227,7 +249,7 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 		parkingPending = all
 
 		for (const s of slots) {
-			const p = options.loop ? wrap(s.to + bleedPx - span, s.to + bleedPx, current) : current
+			const p = offsetOf(s)
 
 			if (all || (p > s.from - pad && p < s.to + pad)) {
 				s.out = false
@@ -284,6 +306,7 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 
 		boxStart = startOf(box)
 		boxSize = sizeOf(box)
+		elStart = startOf(elRect)
 		linePx = options.line ? options.line() - boxStart : boxSize / 2
 		bleedPx = options.bleed ? options.bleed(box) : 0
 
@@ -336,6 +359,68 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 		if (hasEnds()) target = clamp(target)
 	}
 
+	/* Put back a native scroll on a box that is not meant to scroll. An axis
+	   that scrolls on purpose (auto, scroll) is left as it is. */
+	const unscroll = (n: Element) => {
+		if (!n.scrollTop && !n.scrollLeft) return
+
+		const style = getComputedStyle(n)
+
+		if (n.scrollTop && !SCROLLS.has(style.overflowY)) n.scrollTop = 0
+		if (n.scrollLeft && !SCROLLS.has(style.overflowX)) n.scrollLeft = 0
+	}
+
+	const onNativeScroll = (e: Event) => {
+		const n = e.target === document ? root : e.target
+
+		if (options.enabled && n instanceof Element && n.contains(options.el)) unscroll(n)
+	}
+
+	/* :focus-visible is the keyboard's focus, and a script's after it. A
+	   click's is not: what was clicked is on screen already, and the browser
+	   does not scroll for it either */
+	const onFocus = (e: FocusEvent) => {
+		const n = e.target
+
+		if (!options.enabled || !(n instanceof Element) || !n.matches(':focus-visible')) return
+		if (options.el.contains(n) || (!options.whole && options.lead?.contains(n))) focused = n
+	}
+
+	/* Bring a focused element into the box by the shortest move, as the
+	   browser's own focus scroll does. Its rect is read off the DOM, then
+	   corrected by how far its child (or, with `whole`, the element) is drawn
+	   from where it stands: a parked child is drawn where it was parked. */
+	const reveal = (n: Element) => {
+		if (!n.isConnected) return
+
+		/* first, so the rects below are read with no native scroll on them:
+		   the scroll's own event may not have been delivered yet */
+		for (let a: Element | null = options.el; a; a = a.parentElement) unscroll(a)
+
+		const slot = options.whole ? null : slots.find((s) => s.el.contains(n))
+
+		if (!options.whole && !slot) return
+
+		const drawn = slot ? startOf(slot.el.getBoundingClientRect()) - startOf(slot.rect) : startOf(options.el.getBoundingClientRect()) - elStart
+		const stands = -(slot ? offsetOf(slot) : current)
+		const rect = n.getBoundingClientRect()
+
+		const size = sizeOf(rect)
+
+		/* past the leading edge when negative; past the far edge when positive */
+		let before = startOf(rect) + stands - drawn - boxStart
+
+		/* in a loop, the lap of it nearest the box */
+		if (!hasEnds()) before = wrap(-span / 2, span / 2, before + (size - boxSize) / 2) - (size - boxSize) / 2
+
+		const after = before + size - boxSize
+		const d = before < 0 ? (after > 0 ? 0 : before) : after > 0 ? Math.min(before, after) : 0
+
+		/* from `current`, where the rects were read; `reach` does not apply,
+		   or a far child would never arrive */
+		if (d) target = hasEnds() ? clamp(current + d) : current + d
+	}
+
 	/* the virtual input's way in */
 	const input = (dx: number, dy: number) => {
 		if (!options.enabled || !options.listen) return
@@ -363,7 +448,12 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 	const column = {
 		/** Called by the clock every frame. Not for site code. */
 		raf(_: number, ratio: number) {
+			const reveals = focused
+
+			focused = null
+
 			if (!options.enabled || !span) return
+			if (reveals) reveal(reveals)
 
 			if (target !== current) {
 				current += (target - current) * (context.reducedMotion ? 1 : 1 - (1 - options.ease) ** Math.min(ratio, 2))
@@ -444,6 +534,8 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 		destroy({ keep = false }: DestroyOptions = {}) {
 			ro.disconnect()
 			removeEventListener('resize', measure)
+			document.removeEventListener('scroll', onNativeScroll, true)
+			document.removeEventListener('focusin', onFocus)
 			;(options.box ?? options.el).removeEventListener('pointerdown', press)
 			context.steppers.delete(column)
 
@@ -493,6 +585,10 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 	else addEventListener('resize', measure)
 
 	if (options.grab) (options.box ?? options.el).addEventListener('pointerdown', press)
+
+	/* capture: an element's scroll event does not bubble */
+	document.addEventListener('scroll', onNativeScroll, { capture: true, passive: true })
+	document.addEventListener('focusin', onFocus)
 
 	/* now, so center() works straight after; the observer keeps it true */
 	measure()

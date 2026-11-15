@@ -129,6 +129,8 @@ A re-measure keeps whatever sits on the reading line in place. Between ends a wa
 
 Getters: `y`, `target`, `gap` (target − current, the momentum a deformation reads), `max`, `span`, `progress`, `caught`.
 
+Focus goes through the column. Tab to a link in a child that is off screen, and the column moves to show it, by the nearest lap in a loop. It answers `:focus-visible` only, so a click moves nothing. The browser's own attempt, a native scroll on an `overflow: hidden` box around the column, is put back at once: it would move the DOM away from `_vrect`. That covers `scrollIntoView()`, hash links and find-in-page too, so none of them moves a virtual page. Use `col.seek(i)` or `col.to(px)`. An axis with `overflow: auto` or `scroll` is left alone.
+
 Two expandos go to a DOM-mirrored GL layer:
 - **`el._vrect`:** each child's on-screen rect, derived rather than read, so the mirror never reads layout straight after these writes.
 - **`el._parked`:** raised one frame after a child's last transform past the overscan.

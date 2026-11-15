@@ -38,6 +38,10 @@
  * ends — the clamped column. `x` makes it a strip. `gap` is the momentum every
  * deformation reads.
  *
+ * An element the keyboard focuses is brought into view by its column. A
+ * native scroll on a box around a column (focus, scrollIntoView(),
+ * find-in-page) is put back at once, so the DOM never drifts from `_vrect`.
+ *
  * The clock is the page's one requestAnimationFrame. Everything steps on it,
  * then 'tick' goes out with `ratio`, the frame's length in 60fps frames, so a
  * lerp keeps its feel at any refresh rate. Under prefers-reduced-motion the
