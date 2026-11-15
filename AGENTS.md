@@ -16,8 +16,9 @@ To load the skill as a skill, copy `skills/alpacka-scroll/` into the site's `.cl
 
 ## Working on the package
 
-- `npm run typecheck` · `npm run build`. A site that installs the package from a local folder picks up the new `dist/` on its next reload.
-- Logic without a browser frame loop: serve the folder and open `playground/virtual.html?test`. rAF is swapped for `step(n)`, so a test can step the clock by hand. The column checks in `playground/tests.js` load there as `runTests()`. Run them headless with `node skills/alpacka-scroll/reference/cdp.mjs 'http://localhost:8000/playground/virtual.html?test' playground/test-steps.mjs`, which exits 1 on a failure. Add a check with any fix to a column.
+- `npm run typecheck` · `npm run build` · `npm test`. A site that installs the package from a local folder picks up the new `dist/` on its next reload.
+- `npm test` builds, serves the folder on localhost and runs both test pages in headless Chrome, with and without reduced motion. It exits 1 on a failure. It needs Chrome: set `CHROME=/path/to/chrome` anywhere but macOS.
+- The test pages are `playground/virtual.html?test` and `playground/smooth.html?test`. rAF is swapped for `step(n)`, so a check steps the clock by hand. The checks are in `playground/tests.js` (columns and the virtual input) and `playground/smooth-tests.js` (the smooth scroller). Add a check with any fix.
 - In a real site: `skills/alpacka-scroll/reference/cdp.mjs` drives headless Chrome (real frames, WebGPU, real wheel and touch events).
 
 Write for the next agent:

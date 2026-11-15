@@ -42,6 +42,7 @@
 		"build": "tsc -p tsconfig.build.json",
 		"watch": "tsc -p tsconfig.build.json --watch",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "npm run build && node playground/run-tests.mjs",
 		"prepack": "npm run build"
 	},
 	"devDependencies": {

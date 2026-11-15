@@ -68,6 +68,10 @@ Recipes:
 - **ScrollTrigger.** Call `ScrollTrigger.update()` on `'scroll'`. Call `ScrollTrigger.refresh()` on resize, and before `reset()` or `pin()`: a refresh puts back the scroll position it measured from.
 - **Getters:** `y`, `target`, `velocity`, `direction`, `max`, `progress` (0 when the page is too short to scroll), `still`, `locks`.
 
+`smooth()` sets `history.scrollRestoration` to `'manual'`, for a router that restores the scroll itself (vue-router, Nuxt and Astro's `<ClientRouter />` all do). Under a router that leaves back and forward to the browser, set it back to `'auto'` after the call, as the React recipe does. `destroy()` puts back the value it found, and the scrollbar gutter.
+
+The scroll length is re-read when the page or `<body>` changes size, on `resize()`, on `to()`, and when the wheel reaches the end. Under `html, body { height: 100% }` no box changes size when the content grows, so `max` and `progress` can read short until one of those happens. Call `scroll.resize()` after such a change if something reads them.
+
 Touch is never listened to in this mode, and must not be smoothed. On touch the compositor owns the scroll, and anything written from the scroll position on the main thread lags it by a frame.
 
 # Virtual mode
@@ -141,6 +145,8 @@ Two expandos go to a DOM-mirrored GL layer:
 
 # Rules — each one broke something
 
+- **Read the console.** The package throws when `smooth()` or `virtual()` runs on a server, when `virtual()` runs before `<body>` exists and when `column()` gets no element. It warns when a second `smooth()` starts while one is live, and when `to()` gets a selector that matches nothing. Each message starts with `@alpacka/scroll:` and says what to do.
+
 - **Watch a component's reactive state from `onMounted`, never during setup.** A getter can name state the component declares further down, and evaluating it early throws (a TDZ error), which takes the whole page down.
 - **Never patch methods onto an instance, and never spread one.** `Object.assign(scroll, { resize })`, where the new `resize` calls `scroll.resize()`, calls itself forever. `{ ...scroll }` freezes every getter at its value at that moment. Provide the instance as it is, and put site extras in their own functions.
 - **Use `whole: true` for a panel whose children something else animates.** Per-child transforms would overwrite the children's own (e.g. gsap) transforms.
@@ -160,12 +166,12 @@ An in-app or background browser pane often runs no animation frames, and then no
 node reference/cdp.mjs http://localhost:3000/ reference/cdp-example.mjs ./out
 ```
 
-`cdp.mjs` needs Node 22 (for its built-in WebSocket) and Chrome. Run it with `QUIET=1` on a page that floods the console: dev-mode framework warnings can carry whole component trees, and capturing them can stall the script. Then catch errors in the page yourself, with an `error` listener read back through `evaluate`. Change `CHROME` at the top for a platform other than macOS. There are no npm installs. Headless runs real frames and has WebGPU. Steps get `evaluate`, `wheel(x, y, dy, dx)`, `shot(name)` (a PNG), `send` (raw CDP, e.g. `Input.dispatchTouchEvent`) and `sleep`. The run prints page exceptions and console errors at the end.
+`cdp.mjs` needs Node 22 (for its built-in WebSocket) and Chrome. Run it with `QUIET=1` on a page that floods the console: dev-mode framework warnings can carry whole component trees, and capturing them can stall the script. Then catch errors in the page yourself, with an `error` listener read back through `evaluate`. Set `CHROME=/path/to/chrome` on a platform other than macOS. The steps file can be a relative or an absolute path. There are no npm installs. Headless runs real frames and has WebGPU. Steps get `evaluate`, `wheel(x, y, dy, dx)`, `shot(name)` (a PNG), `send` (raw CDP, e.g. `Input.dispatchTouchEvent`) and `sleep`. The run prints page exceptions and console errors at the end.
 
 What to check:
 - For an A/B check against the old scroll, run the same steps file against a `git worktree` of the previous branch on a second port.
 - Chrome holds back touch moves that stay within its touch slop, and merges events sent with no gap. Space touch steps about 16–40ms apart.
-- For package logic alone, `playground/virtual.html?test` swaps rAF for a hand-stepped clock, `step(n)`, and loads the column checks in `playground/tests.js` as `runTests()`. Serve the package folder, then run `node skills/alpacka-scroll/reference/cdp.mjs 'http://localhost:8000/playground/virtual.html?test' playground/test-steps.mjs` from it. It runs every check with and without reduced motion, and exits 1 on a failure.
+- For package logic alone, run `npm test` in the package folder. It serves the folder on localhost and runs `playground/virtual.html?test` and `playground/smooth.html?test`, where rAF is swapped for a hand-stepped clock, `step(n)`. Every check runs with and without reduced motion, and a failure exits 1.
 - Beside another agent's Chrome, give the driver a port of its own: `CDP_PORT=9811 node cdp.mjs …`. Two drivers on one port talk to the same browser.
 
 `cdp.mjs` closes its Chrome on exit, Ctrl+C included. Check for leftovers anyway: a headless Chrome still running makes macOS refuse to open the normal Chrome, because it brings the invisible instance to the front instead of opening a window. To list them, run `pgrep -fl "Google Chrome.*--headless"`. To close them, run `pkill -f "Google Chrome.*--headless"`.
@@ -182,7 +188,9 @@ What to check:
 | `src/input.ts` | the virtual input: wheel sum and spool, finger, keys, latch, `across`, `claimed` |
 | `src/column.ts` | `createColumn`: wrap, ends, `whole`, parking, the reading line, grab, `seek` |
 | `src/virtual.ts` | `virtual()`: the fixed document, input → columns → `'input'`, clock, locks, `reducedMotion` |
-| `playground/tests.js` | the column checks, `runTests()` on the `?test` clock; `playground/test-steps.mjs` drives them |
+| `playground/tests.js` | the column and virtual-input checks, `runTests()` on `virtual.html?test` |
+| `playground/smooth-tests.js` | the smooth scroller's checks, `runTests()` on `smooth.html?test` |
+| `playground/run-tests.mjs` | `npm test`: serves the folder and runs both pages through `cdp.mjs` and `playground/test-steps.mjs` |
 
 # Reference
 

@@ -20,12 +20,20 @@ export type Context = {
 	steppers: Set<Stepper>
 }
 
-export const createContext = ({ ease = 0.1, reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches } = {}): Context => ({
-	ease,
-	reducedMotion,
-	holds: new Set(),
-	steppers: new Set(),
-})
+/* Both modes start here, so this is where a call on a server is caught: the
+   import is safe there, the call is not */
+export const createContext = ({ ease = 0.1, reducedMotion }: { ease?: number, reducedMotion?: boolean } = {}): Context => {
+	if (typeof document === 'undefined') {
+		throw new Error('@alpacka/scroll: smooth() and virtual() need a browser. Call them on the client: in onMounted, in useEffect, or from a .client plugin.')
+	}
+
+	return {
+		ease,
+		reducedMotion: reducedMotion ?? matchMedia('(prefers-reduced-motion: reduce)').matches,
+		holds: new Set(),
+		steppers: new Set(),
+	}
+}
 
 /**
  * The page's one requestAnimationFrame. `step` gets the time in seconds and

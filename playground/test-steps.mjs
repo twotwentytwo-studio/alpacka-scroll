@@ -1,6 +1,6 @@
-// Steps for cdp.mjs: run playground/tests.js twice, under no motion preference
-// and under prefers-reduced-motion: reduce. Exits 1 when anything fails.
-//   node skills/alpacka-scroll/reference/cdp.mjs 'http://localhost:8000/playground/virtual.html?test' playground/test-steps.mjs
+// Steps for cdp.mjs: run a test page's runTests() twice, under no motion
+// preference and under prefers-reduced-motion: reduce. Exits 1 when anything
+// fails. `npm test` runs it on every test page (see run-tests.mjs).
 export default async ({ evaluate, send, sleep }) => {
 	for (let i = 0; i < 50 && (await evaluate('typeof runTests')) !== 'function'; i++) await sleep(100)
 

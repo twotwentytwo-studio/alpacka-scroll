@@ -35,17 +35,29 @@ export type SmoothOptions = {
 	ease?: number
 }
 
+/* how many smooth() are live: two would each ease the same wheel into the same page */
+let live = 0
+
 export const smooth = ({ ease = 0.1 }: SmoothOptions = {}) => {
 	const context = createContext({ ease })
+
+	if (live++) console.warn('@alpacka/scroll: smooth() was called while another instance is live. Call destroy() on the old one first, or make it once and share it: two instances both ease the same wheel.')
+
 	const events = createBus<{ tick: Tick, scroll: Move }>()
 	const page = createScroller(null, context, (y, direction) => events.emit('scroll', { y, direction }))
+	const root = document.documentElement
 
-	/* the scroller owns the position; the browser restoring one too would land
-	   before it and show as a jump */
+	/* what destroy() puts back */
+	const before = { restoration: history.scrollRestoration, gutter: root.style.scrollbarGutter }
+
+	/* The scroller owns the position; the browser restoring one too would land
+	   before it and show as a jump. A site whose router leaves back and
+	   forward to the browser sets this back to 'auto' after the call: the
+	   scroller follows a restored position like any native scroll. */
 	history.scrollRestoration = 'manual'
 
 	/* a lock hides the scrollbar; the gutter keeps the page from widening */
-	document.documentElement.style.scrollbarGutter = 'stable'
+	root.style.scrollbarGutter = 'stable'
 
 	const stopClock = startClock((time, ratio) => {
 		context.steppers.forEach((s) => s.raf(time, ratio))
@@ -85,9 +97,13 @@ export const smooth = ({ ease = 0.1 }: SmoothOptions = {}) => {
 		/** The same scroller on a box that scrolls on its own (a panel), stepped on this clock. Call its destroy() when the box goes. */
 		scope: (box: HTMLElement): Scroller => createScroller(box, context),
 
+		/** Stop the clock and the listeners, and put back the scroll restoration and scrollbar gutter it found. */
 		destroy() {
 			stopClock()
 			page.destroy()
+			history.scrollRestoration = before.restoration
+			root.style.scrollbarGutter = before.gutter
+			live--
 		},
 
 		/** Where the page is drawn, px. */

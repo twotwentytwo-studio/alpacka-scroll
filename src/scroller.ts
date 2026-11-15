@@ -122,7 +122,10 @@ export const createScroller = (element: HTMLElement | null, context: Context, on
 
 		const el = typeof where === 'string' ? document.querySelector(where) : where
 
-		if (!el) return current
+		if (!el) {
+			console.warn(`@alpacka/scroll: to(${JSON.stringify(where)}) matched no element, so the scroll stays where it is.`)
+			return current
+		}
 
 		return el.getBoundingClientRect().top - (element?.getBoundingClientRect().top ?? 0) + readNative()
 	}
@@ -130,6 +133,9 @@ export const createScroller = (element: HTMLElement | null, context: Context, on
 	/* goes through locks: a lock holds the visitor's input, not the code's */
 	const to = (where: ScrollTarget, { duration = 1, ease = expo, immediate }: ToOptions = {}) =>
 		new Promise<void>((done) => {
+			/* the length as it is now: see onWheel */
+			resize()
+
 			const end = clamp(positionOf(where))
 
 			if (immediate || context.reducedMotion || !duration) {
@@ -173,6 +179,11 @@ export const createScroller = (element: HTMLElement | null, context: Context, on
 		/* locked: cancelled, so a gesture still running when the lock lifts stays this scroller's */
 		if (locks.size) return e.preventDefault()
 
+		/* The length can grow where no observer sees it: content inside a
+		   <body> of fixed height changes no box that is watched. So ask again
+		   before calling this the end, or the wheel stops short of it. */
+		if (d.y > 0 && target + spool + d.y * WHEEL_GAIN > max - SETTLE_PX) resize()
+
 		/* at the end it is heading for: the browser's, to chain or to bounce */
 		if (!spool && !tween && (d.y > 0 ? current >= max - SETTLE_PX : current <= SETTLE_PX)) return
 
@@ -207,7 +218,11 @@ export const createScroller = (element: HTMLElement | null, context: Context, on
 
 				spool -= spend
 				target = clamp(target + spend)
-				if (target === (spend > 0 ? max : 0)) spool = 0
+
+				/* against the end it is heading for, the rest has nowhere to go.
+				   Only when something was spent: the clock's first frame has no
+				   length and spends nothing, which says nothing about an end */
+				if (spend && target === (spend > 0 ? max : 0)) spool = 0
 			}
 
 			if (target !== current) {

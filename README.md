@@ -50,6 +50,8 @@ Read-only: `y`, `target`, `velocity`, `direction`, `max`, `progress`, `still`, `
 - If anything else moves the page, the scroller follows it at once, even mid-ease.
 - A mouse wheel notch is spread over a few frames, so the page ramps into it.
 - A nested box that can scroll takes the wheel while the pointer is over it and passes it on at its end. It needs no markup.
+- `smooth()` sets `history.scrollRestoration` to `'manual'` and `scrollbar-gutter: stable` on the root, and `destroy()` puts both back. If your router leaves back and forward to the browser (Next does), set it to `'auto'` after the call: the scroller follows a restored position like any other native scroll.
+- The scroll length is re-read when the page or `<body>` changes size, on `resize()`, on `to()`, and when the wheel reaches the end, so content that grows inside a `<body>` of fixed height is still reached.
 - `lock(name)` sets `overflow: hidden` on the root. The page scrolls again when every name is unlocked. A lock stops the visitor only: `to()`, `reset()` and `pin()` still move the page.
 - `to()` returns a Promise. It resolves when it lands, and also when a wheel, a lock or a native scroll interrupts it, so awaiting it never hangs. `duration` is in seconds.
 - `velocity` is px per 60fps frame, at any refresh rate. Multiply by the tick's `ratio` for px moved this frame.
@@ -151,9 +153,19 @@ Under `prefers-reduced-motion`, smooth leaves the wheel to the browser and `to()
 
 `virtual({ reducedMotion: false })` keeps the easing for everyone, for a site that handles reduced motion itself. `true` removes it for everyone.
 
+## Mistakes it tells you about
+
+- Calling `smooth()` or `virtual()` on a server throws, with a message that says where to call it.
+- `virtual()` before `<body>` exists throws.
+- `column()` without an element throws.
+- A second `smooth()` while one is live warns in the console.
+- `to()` with a selector that matches nothing warns, and the scroll stays where it is.
+
 ## Playground and tests
 
-Serve the folder and open `playground/virtual.html`: a looping column, a clamped one and a strip. With `?test` the clock is stepped by hand (`step(n)`) and `runTests()` runs the checks in `playground/tests.js`. `playground/test-steps.mjs` runs them in headless Chrome.
+`npm test` builds the package and runs every check in headless Chrome, with and without reduced motion. It needs Chrome: set `CHROME=/path/to/chrome` anywhere but macOS.
+
+To look at a mode, serve the folder and open `playground/virtual.html` (a looping column, a clamped one and a strip) or `playground/smooth.html`. With `?test` the clock is stepped by hand (`step(n)`) and `runTests()` runs that page's checks.
 
 ## Agent skill
 

@@ -10,8 +10,9 @@ import { virtual } from '../dist/index.js'
  * measure, and from then on runs synchronously — step(n) included — so no
  * late measure can land in the middle of it.
  *
- * Headless, from the package folder, with the folder served on :8000:
- *   node skills/alpacka-scroll/reference/cdp.mjs 'http://localhost:8000/playground/virtual.html?test' playground/test-steps.mjs
+ * Also here: the virtual input (wheel, keys, finger, push), fed synthetic
+ * events. `npm test` runs this page and smooth.html, with and without
+ * reduced motion.
  */
 
 /* every fixture: a 300px-wide box, 400px tall unless asked, holding a column
@@ -21,7 +22,15 @@ const ITEM_PX = 100
 const GAP_PX = 10
 const BOX_PX = 400
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 150))
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const settle = () => sleep(150)
+
+/* a wheel gesture stays latched to where it started for 150ms after its last
+   event, so a check that wheels waits out the one before it */
+const newGesture = () => sleep(200)
+
+/* a synthetic wheel event on `target`: it runs the input's handler as a real one would */
+const wheel = (target, deltaY, deltaX = 0) => target.dispatchEvent(new WheelEvent('wheel', { deltaY, deltaX, bubbles: true, cancelable: true, composed: true }))
 const near = (a, b, tolerance = 0.01) => Math.abs(a - b) <= tolerance
 const REDUCE = '(prefers-reduced-motion: reduce)'
 
@@ -376,6 +385,111 @@ const checks = {
 		kids[0].focus()
 		t.step(300)
 		t.expect('back up', near(col.y, 10, 0.5) && near(top(kids[0]), 0, 0.5), { y: col.y, top: top(kids[0]) })
+	},
+
+	async 'the wheel is summed through a frame, and a lock drops it'(t) {
+		const { col, box } = await make(t, { loop: false })
+
+		await newGesture()
+		wheel(box, 30)
+		wheel(box, 30)
+		t.expect('nothing moves until the frame', col.target === 0, col.target)
+
+		t.step(1)
+		t.expect('one delta for the frame, scaled 1.25', col.target === 75, col.target)
+
+		t.scroll.lock('check')
+		wheel(box, 30)
+		t.step(1)
+		t.scroll.unlock('check')
+		t.step(1)
+		t.expect('rolled under a lock: dropped, not saved up', col.target === 75, col.target)
+	},
+
+	async 'a box that scrolls natively keeps its own wheel'(t) {
+		const { col, kids } = await make(t, { loop: false })
+		const inner = document.createElement('div')
+
+		inner.style.cssText = 'height: 50px; overflow-y: auto;'
+		inner.innerHTML = '<div style="height: 500px"></div>'
+		kids[0].append(inner)
+
+		await newGesture()
+		wheel(inner.firstElementChild, 30)
+		t.step(1)
+		t.expect('the column is not moved', col.target === 0, col.target)
+	},
+
+	async 'keys move it, unless the focused element wants them'(t) {
+		const { col } = await make(t, { loop: false })
+		const field = document.createElement('input')
+		const key = (name, target = window) => {
+			const e = new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true })
+
+			target.dispatchEvent(e)
+
+			return e
+		}
+
+		document.body.append(field)
+		t.cleanup.push(() => field.remove())
+
+		t.expect('arrow down: 100px, at once, and the key is taken', key('ArrowDown').defaultPrevented && col.target === 100, col.target)
+
+		key('ArrowUp')
+		t.expect('arrow up: back', col.target === 0, col.target)
+
+		key('PageDown')
+		t.expect('page down: 0.9 of the viewport, up to the end', col.target === Math.min(col.max, document.documentElement.clientHeight * 0.9), { target: col.target, max: col.max })
+
+		col.to(0, { immediate: true })
+		t.expect('typed into a field: the field\'s', !key('ArrowDown', field).defaultPrevented && col.target === 0, col.target)
+	},
+
+	async 'a finger moves it, and the last one up throws'(t) {
+		if (typeof Touch === 'undefined') return
+
+		const { col, box } = await make(t, { loop: false })
+		const finger = (type, y) => {
+			const points = y === null ? [] : [new Touch({ identifier: 1, target: box, clientY: y })]
+
+			box.dispatchEvent(new TouchEvent(type, { touches: points, bubbles: true }))
+		}
+
+		finger('touchstart', 300)
+		finger('touchmove', 290)
+		t.expect('10px up the screen: 32.5px down the column', col.target === 32.5, col.target)
+
+		finger('touchend', null)
+		t.expect('lifted: the last move thrown once, 35 times over', col.target === 382.5, col.target)
+	},
+
+	async 'push() is one more input device'(t) {
+		const { col } = await make(t, { loop: false })
+
+		t.scroll.push(50)
+		t.expect('vertical first', col.target === 50, col.target)
+
+		t.scroll.push(0, 40)
+		t.expect('a column leaves a sideways delta alone', col.target === 50, col.target)
+
+		const release = t.scroll.hold()
+
+		t.scroll.push(50)
+		release()
+		t.expect('held: dropped', col.target === 50, col.target)
+	},
+
+	async 'column() without an element says so'(t) {
+		let message = ''
+
+		try {
+			t.scroll.column({ el: null })
+		} catch (error) {
+			message = error.message
+		}
+
+		t.expect('a TypeError that names the option', message.includes('column() needs `el`'), message)
 	},
 
 	async 'virtual() follows prefers-reduced-motion'(t) {

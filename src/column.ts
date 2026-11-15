@@ -148,6 +148,10 @@ const clear = (n: Child, styled: boolean) => {
 export type Column = ReturnType<typeof createColumn>
 
 export const createColumn = (initial: ColumnOptions, context: Context) => {
+	if (!(initial.el instanceof HTMLElement)) {
+		throw new TypeError(`@alpacka/scroll: column() needs \`el\`, an element, and got ${initial.el}. Make the column once the element is mounted.`)
+	}
+
 	const options = {
 		box: null, x: false, loop: true, whole: false, lead: null, line: null, ease: 0.1,
 		reach: 0, overscan: 0.5, bleed: null, grab: false, enabled: true, listen: true, transforms: true, ...initial,

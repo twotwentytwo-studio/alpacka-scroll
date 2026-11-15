@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>@alpacka/scroll — smooth</title>
+	<style>
+		* { box-sizing: border-box; margin: 0; }
+		body { font: 500 14px/1.2 system-ui, sans-serif; background: #111; color: #eee; }
+		section { height: 900px; display: grid; place-items: center; font-size: 48px; }
+		#panel { position: fixed; right: 20px; top: 20px; width: 220px; height: 300px; overflow-y: auto; background: #222; outline: 1px solid #333; }
+		#panel > div { height: 1500px; padding: 10px; }
+		#bar { position: fixed; left: 20px; top: 20px; display: flex; gap: 8px; }
+	</style>
+</head>
+<body>
+	<main id="page">
+		<section style="background: hsl(200 45% 22%)">0</section>
+		<section style="background: hsl(225 45% 22%)">1</section>
+		<section id="mark" style="background: hsl(250 45% 22%)">2</section>
+		<section style="background: hsl(275 45% 22%)">3</section>
+		<section style="background: hsl(300 45% 22%)">4</section>
+		<section id="grow" style="background: hsl(325 45% 22%)">5</section>
+	</main>
+
+	<div id="panel"><div>a box that scrolls on its own keeps the wheel while the pointer is over it</div></div>
+	<div id="bar">
+		<button data-to="#mark">to #mark</button>
+		<button data-to="0">to 0</button>
+		<button data-lock>lock</button>
+	</div>
+
+	<script type="module">
+		/* ?test: a hand-stepped clock, and the checks in smooth-tests.js as
+		   runTests(). Each check makes its own smooth(), so the page makes
+		   none. Without ?test this is a page to try the mode on. */
+		const testing = location.search.includes('test')
+
+		if (testing) {
+			const queue = new Map()
+			let lastId = 0
+			let ms = 0
+			window.requestAnimationFrame = (f) => (queue.set(++lastId, f), lastId)
+			window.cancelAnimationFrame = (id) => queue.delete(id)
+			window.step = (n = 1, dt = 1000 / 60) => {
+				for (let i = 0; i < n; i++) {
+					ms += dt
+					const due = [...queue.values()]
+					queue.clear()
+					due.forEach((f) => f(ms))
+				}
+			}
+
+			const { runTests } = await import('./smooth-tests.js')
+			window.runTests = () => runTests({ step: window.step })
+		} else {
+			const { smooth } = await import('../dist/index.js')
+			const scroll = smooth()
+
+			window.scroll$ = scroll
+
+			for (const button of document.querySelectorAll('[data-to]')) {
+				button.addEventListener('click', () => scroll.to(Number.isNaN(+button.dataset.to) ? button.dataset.to : +button.dataset.to))
+			}
+
+			document.querySelector('[data-lock]').addEventListener('click', (e) => {
+				const locked = scroll.locks.includes('demo')
+
+				scroll[locked ? 'unlock' : 'lock']('demo')
+				e.target.textContent = locked ? 'lock' : 'unlock'
+			})
+		}
+	</script>
+</body>
+</html>

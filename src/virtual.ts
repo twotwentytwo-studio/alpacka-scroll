@@ -42,6 +42,11 @@ const FIXED_DOCUMENT = { position: 'fixed', inset: '0', overflow: 'hidden', touc
 
 export const virtual = ({ reducedMotion }: VirtualOptions = {}) => {
 	const context = createContext({ reducedMotion })
+
+	if (!document.body) {
+		throw new Error('@alpacka/scroll: virtual() ran before <body> exists. Call it from a module script, or once the document has loaded.')
+	}
+
 	const locks = new Set<string>()
 	const across = new Set<() => boolean>()
 	const events = createBus<{ tick: VirtualTick, input: Input }>()

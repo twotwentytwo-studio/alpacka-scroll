@@ -1,12 +1,14 @@
 // Headless Chrome over CDP: open a URL, run steps, print results.
-// usage: [CDP_PORT=9333] node cdp.mjs <url> <steps.mjs> [outDir]
+// usage: [CDP_PORT=9333] [CHROME=/path/to/chrome] node cdp.mjs <url> <steps.mjs> [outDir]
 import { spawn } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const [url, stepsFile, out = tmpdir()] = process.argv.slice(2)
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+/* CHROME: the browser to run, anywhere but macOS's default install */
+const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 /* CDP_PORT: a port of its own, for running beside another agent's Chrome */
 const PORT = Number(process.env.CDP_PORT) || 9333
 const dir = mkdtempSync(join(tmpdir(), 'cdp-'))
@@ -74,7 +76,8 @@ if (!process.env.QUIET) await send('Runtime.enable')
 await send('Page.enable')
 await send('Page.navigate', { url })
 
-const steps = (await import(join(process.cwd(), stepsFile))).default
+/* relative to where it is run from, or absolute */
+const steps = (await import(pathToFileURL(resolve(stepsFile)).href)).default
 
 try {
 	await steps({ evaluate, wheel, shot, sleep, send, logs })
