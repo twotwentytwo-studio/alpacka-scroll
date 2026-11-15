@@ -118,14 +118,18 @@ Configurations:
 | a page drawn wholly in GL: no transforms written, `_vrect` and `_parked` still published | `transforms: false` |
 
 Methods:
-- `col.to(px, now?)`: set a position. With `now` there is no travel.
-- `col.add(dx, dy)`: move it by code, such as a drift. It ignores `listen`.
-- `col.center(i, line?, force?)`: put child `i` in the middle, or its leading edge `line` px in, with no travel.
-- `col.seek(i, line?)`: the same, but glided to, and at the nearest lap. It returns the distance added.
+- `col.to(px, { immediate })`: set a position. With `immediate` there is no travel.
+- `col.add(px)`: move it by code along its own axis, such as a drift. It ignores `listen`.
+- `col.center(i, { line, force })`: put child `i` in the middle, or its leading edge `line` px in, with no travel. `force` places it while the column is disabled.
+- `col.seek(i, { line })`: the same, but glided to, and at the nearest lap. It returns the distance added.
+
+Only `scroll.push(dy, dx, e)` takes two deltas, vertical first. Everything on a column is one number along its axis.
+
+Upgrading a site from 0.3: `col.add(dx, dy)` is now `col.add(px)`, and `to`, `center` and `seek` take their extras as named options (`col.to(px, true)` is `col.to(px, { immediate: true })`). An old call does not throw in plain JS: it eases where it used to jump, or adds 0. Search the site for `.add(`, `.to(`, `.center(` and `.seek(` on columns when you upgrade.
 - `col.measure()`, `col.set({ … })`.
 - `col.destroy({ keep? })`: stop listening, observing and stepping. A plain `destroy()` clears every transform, `_vrect` and `_parked` it wrote. With `keep: true` it leaves them as they stand, which is what an unmount wants (see the rules).
 
-A re-measure keeps whatever sits on the reading line in place. Between ends a wall wins: a column resting at its top or far end, or coasting into one, stays there through a rotation or a resize. After `measure()`, `to(px, true)` or `center()`, children past the overscan park two frames later, as they do when the column moves them out.
+A re-measure keeps whatever sits on the reading line in place. Between ends a wall wins: a column resting at its top or far end, or coasting into one, stays there through a rotation or a resize. After `measure()`, `to(px, { immediate: true })` or `center()`, children past the overscan park two frames later, as they do when the column moves them out.
 
 Getters: `y`, `target`, `gap` (target − current, the momentum a deformation reads), `max`, `span`, `progress`, `caught`.
 

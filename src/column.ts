@@ -1,4 +1,4 @@
-import type { Context } from './core.js'
+import type { Context, Stepper } from './core.js'
 
 /*
  * A column — or, with `x`, a strip — moved by the virtual mode's deltas.
@@ -435,19 +435,19 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 		move(d)
 	}
 
-	const startFor = (i: number, line: number | null) => {
+	const startFor = (i: number, line?: number) => {
 		const s = slots[i + (options.lead && !options.whole ? 1 : 0)]
 
 		if (!s) return null
 
 		const start = startOf(s.rect) - boxStart
 
-		return line === null ? start + (sizeOf(s.rect) - boxSize) / 2 : start - line
+		return line == null ? start + (sizeOf(s.rect) - boxSize) / 2 : start - line
 	}
 
-	const column = {
-		/** Called by the clock every frame. Not for site code. */
-		raf(_: number, ratio: number) {
+	/* what the clock and the virtual input call: kept off the column, which is the site's */
+	const stepper: Stepper = {
+		raf(_, ratio) {
 			const reveals = focused
 
 			focused = null
@@ -476,38 +476,50 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 			}
 		},
 
-		/** Called by the virtual input with each delta. Not for site code — use add() to move it by code. */
 		input,
+	}
 
+	const column = {
 		/** Re-read the layout. Automatic when the element or box resizes; call it after anything else that moves the children. */
 		measure,
 
-		/** Move the target by code (a drift, an autoplay). Ignores `listen`, respects `enabled`. */
-		add(dx: number, dy: number) {
-			if (options.enabled) move(options.x ? dx + dy : dy)
+		/** Move the target by `px` along the column's axis, by code (a drift, an autoplay). Ignores `listen`, respects `enabled`. */
+		add(px: number) {
+			if (options.enabled) move(px)
 		},
 
-		/** Set the target to a position (px). With `now`, be there with no travel. */
-		to(v: number, now = false) {
-			target = hasEnds() ? clamp(v) : v
+		/** Set the target to a position (px). */
+		to(px: number, { immediate = false }: {
+			/** Be there with no travel. Default false. */
+			immediate?: boolean
+		} = {}) {
+			target = hasEnds() ? clamp(px) : px
 
-			if (!now) return
+			if (!immediate) return
 
 			current = lastDrawn = target
 			apply(true)
 		},
 
-		/** Child i in the box's middle, or its leading edge `line` px in, with no travel. `force` places it while disabled. */
-		center(i: number, line: number | null = null, force = false) {
+		/** Put child `i` in the box's middle, with no travel. */
+		center(i: number, { line, force = false }: {
+			/** Put the child's leading edge this many px into the box instead. Default: centred. */
+			line?: number
+			/** Place it even while the column is disabled. Default false. */
+			force?: boolean
+		} = {}) {
 			if (!force && !options.enabled) return
 
 			const p = startFor(i, line)
 
-			if (p !== null) column.to(p, true)
+			if (p !== null) column.to(p, { immediate: true })
 		},
 
-		/** Glide to the same place as center() — the nearest lap of it. Returns the distance added to the target. */
-		seek(i: number, line: number | null = null) {
+		/** Glide to where center() would put child `i`, by the nearest lap. Returns the distance (px) added to the target. */
+		seek(i: number, { line }: {
+			/** Put the child's leading edge this many px into the box instead. Default: centred. */
+			line?: number
+		} = {}) {
 			let p = options.enabled ? startFor(i, line) : null
 
 			if (p === null) return 0
@@ -537,7 +549,7 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 			document.removeEventListener('scroll', onNativeScroll, true)
 			document.removeEventListener('focusin', onFocus)
 			;(options.box ?? options.el).removeEventListener('pointerdown', press)
-			context.steppers.delete(column)
+			context.steppers.delete(stepper)
 
 			if (keep) return
 
@@ -592,7 +604,7 @@ export const createColumn = (initial: ColumnOptions, context: Context) => {
 
 	/* now, so center() works straight after; the observer keeps it true */
 	measure()
-	context.steppers.add(column)
+	context.steppers.add(stepper)
 
 	return column
 }

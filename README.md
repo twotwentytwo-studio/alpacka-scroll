@@ -99,10 +99,10 @@ const col = scroll.column({
 	transforms: true,  // false: writes nothing to the DOM
 })
 
-col.to(px, now)                 // set the target. now: be there with no travel
-col.add(dx, dy)                 // move the target by code. Ignores listen
-col.center(i, line, force)      // child i in the middle, no travel
-col.seek(i, line)               // the same, eased, by the nearest lap. Returns the distance
+col.to(px, { immediate })       // set the target. immediate: be there with no travel
+col.add(px)                     // move the target by code, along the column's axis. Ignores listen
+col.center(i, { line, force })  // child i in the middle, no travel
+col.seek(i, { line })           // the same, eased, by the nearest lap. Returns the distance
 col.measure()                   // re-read the layout
 col.set({ listen: false })      // change options
 col.destroy({ keep: false })
@@ -133,6 +133,17 @@ Each child gets two properties to read instead of the DOM:
 ### Unmounting
 
 `destroy()` clears every transform the column wrote. `destroy({ keep: true })` stops the column and leaves them. Use it when the element stays on screen for a while after unmount, such as a page leaving under a transition.
+
+### Upgrading from 0.3
+
+Four column methods changed shape, so that every option has a name:
+
+- `col.add(dx, dy)` is `col.add(px)`, along the column's own axis. For an `x` strip that read both, pass `dx + dy`.
+- `col.to(px, true)` is `col.to(px, { immediate: true })`.
+- `col.center(i, line, force)` is `col.center(i, { line, force })`.
+- `col.seek(i, line)` is `col.seek(i, { line })`.
+
+`raf` and `input` are gone from a column, and `raf` from a scroller. They were the clock's, never the site's.
 
 ## Reduced motion
 

@@ -113,7 +113,7 @@ const topWall = async (t, leadPx) => {
 	}
 
 	/* coasting up into the top: the wall holds, and so does the momentum */
-	col.to(500, true)
+	col.to(500, { immediate: true })
 	col.to(0)
 	t.step(4)
 
@@ -138,8 +138,8 @@ const checks = {
 		t.expect('at rest: nothing written', bare(off.kids), off.kids.map((k) => k.style.transform))
 		t.expect('at rest: the same rects', rects(on.kids) === rects(off.kids), { on: rects(on.kids), off: rects(off.kids) })
 
-		on.col.add(0, 730)
-		off.col.add(0, 730)
+		on.col.add(730)
+		off.col.add(730)
 		t.step(120)
 
 		t.expect('moved, past a wrap: nothing written', bare(off.kids), off.kids.map((k) => k.style.transform))
@@ -156,7 +156,7 @@ const checks = {
 	async 'transforms turned off and on: taken off, then put back'(t) {
 		const { col, kids } = await make(t, { overscan: 3 })
 
-		col.add(0, 240)
+		col.add(240)
 		t.step(120)
 
 		const before = JSON.stringify(kids.map((k) => (k._vrect ? k._vrect.top : null)))
@@ -175,7 +175,7 @@ const checks = {
 	async 'destroy({ keep: true }) leaves every child where it stands'(t) {
 		const { col, box, kids } = await make(t, { loop: false, overscan: 0 })
 
-		col.to(300, true)
+		col.to(300, { immediate: true })
 		t.step(3)
 
 		const before = snapshot(kids)
@@ -202,7 +202,7 @@ const checks = {
 	async 'destroy({ keep: true }) on a whole column leaves its transform'(t) {
 		const { col, el } = await make(t, { whole: true })
 
-		col.to(200, true)
+		col.to(200, { immediate: true })
 
 		const transform = el.style.transform
 
@@ -216,7 +216,7 @@ const checks = {
 	async 'a forced placement parks what is past the overscan two frames later'(t) {
 		for (const loop of [true, false]) {
 			const { col, kids } = await make(t, { loop, overscan: 0 }, { items: 14 })
-			const placements = [['center(6)', () => col.center(6)], ['to(700, true)', () => col.to(700, true)], ['measure()', () => col.measure()]]
+			const placements = [['center(6)', () => col.center(6)], ['to(700, { immediate: true })', () => col.to(700, { immediate: true })], ['measure()', () => col.measure()]]
 
 			for (const [how, place] of placements) {
 				const label = `loop: ${loop}, ${how}`
@@ -250,7 +250,7 @@ const checks = {
 	async 'a column with ends at its far end stays there through a re-measure'(t) {
 		const { col, box } = await make(t, { loop: false })
 
-		col.to(col.max, true)
+		col.to(col.max, { immediate: true })
 		box.style.height = '350px'
 		col.measure()
 		t.expect('the box shrinks at the end', col.max === 760 && col.target === col.max && col.y === col.max, { y: col.y, target: col.target, max: col.max })
@@ -259,7 +259,7 @@ const checks = {
 		col.measure()
 		t.expect('the box grows at the end', col.max === 690 && col.target === col.max && col.y === col.max, { y: col.y, target: col.target, max: col.max })
 
-		col.to(100, true)
+		col.to(100, { immediate: true })
 		col.to(col.max)
 		t.step(4)
 
@@ -275,7 +275,7 @@ const checks = {
 		const { col, kids } = await make(t, { loop: false })
 
 		/* the reading line, 200px down the box, sits 50px into child 4 */
-		col.to(300, true)
+		col.to(300, { immediate: true })
 		kids[0].style.height = '160px'
 		col.measure()
 		t.expect('the child on the reading line stays put', near(col.y, 360) && near(col.target, 360), { y: col.y, target: col.target })
@@ -284,7 +284,7 @@ const checks = {
 	async 'turning the loop off brings a value laps away into the first lap'(t) {
 		const { col } = await make(t, { loop: true })
 
-		col.to(300 + 2 * col.span, true)
+		col.to(300 + 2 * col.span, { immediate: true })
 		col.set({ loop: false })
 		t.expect('the same place, one lap in', near(col.y, 300) && near(col.target, 300), { y: col.y, target: col.target, span: col.span })
 	},
@@ -296,7 +296,7 @@ const checks = {
 			const col = instance.column({ el: fixture.el, box: fixture.box, loop: false })
 
 			/* a new clock's first frame has ratio 0 */
-			col.add(0, 300)
+			col.add(300)
 			t.step(2)
 
 			if (reducedMotion) t.expect('true: lands at once', col.y === 300 && col.gap === 0, { y: col.y, gap: col.gap })
@@ -384,7 +384,7 @@ const checks = {
 		const fixture = build()
 		const col = instance.column({ el: fixture.el, box: fixture.box, loop: false })
 
-		col.add(0, 300)
+		col.add(300)
 		t.step(2)
 
 		if (reduce) t.expect('reduce: lands at once', col.y === 300 && col.gap === 0, { y: col.y, gap: col.gap })

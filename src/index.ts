@@ -30,7 +30,7 @@
  *                               overscan, bleed, grab, enabled, listen,
  *                               transforms })
  *   col.y · target · gap · max · span · progress · caught
- *   col.to(px, now?) · add(dx, dy) · center(i, line?, force?) · seek(i, line?)
+ *   col.to(px, { immediate }) · add(px) · center(i, { line, force }) · seek(i, { line })
  *   col.measure() · set({ … }) · destroy({ keep? })  keep: leave every transform as it stands
  *
  * A column wraps by default — the infinite scroll. `loop: false` gives its

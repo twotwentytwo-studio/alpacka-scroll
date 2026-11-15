@@ -1,5 +1,5 @@
 import { onBeforeUnmount, onMounted, type Ref } from 'vue'
-import type { Scroller } from '@alpacka/scroll'
+import type { Scroller, ScrollTarget, ToOptions } from '@alpacka/scroll'
 
 /*
  * Smooth-mode scroll for a box that scrolls on its own — a panel over the
@@ -9,7 +9,7 @@ import type { Scroller } from '@alpacka/scroll'
  * provides (see smooth-plugin.client.ts).
  *
  *   const scroller = useScopedScroll(box)
- *   scroller.to(0, true)          // a reset nobody should see
+ *   scroller.to(0, { immediate: true })   // a reset nobody should see
  *
  * Nothing to mark: a page locked under the panel is `overflow: hidden` and
  * leaves the wheel alone, and an unlocked one hands the wheel to any box under
@@ -31,7 +31,7 @@ export const useScopedScroll = (box: Ref<HTMLElement | null>) => {
 	})
 
 	return {
-		/** Glide the box to `y` px — or with `immediate`, jump there. */
-		to: (y: number, immediate = false) => scroller?.to(y, { immediate }),
+		/** Scroll the box to a position, selector or element: the scroller's own to(), with its options. */
+		to: (where: ScrollTarget, options?: ToOptions) => scroller?.to(where, options),
 	}
 }

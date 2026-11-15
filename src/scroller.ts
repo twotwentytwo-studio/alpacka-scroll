@@ -1,4 +1,4 @@
-import type { Context } from './core.js'
+import type { Context, Stepper } from './core.js'
 import { canScrollFurther, drainSpool, wheelReader } from './wheel.js'
 
 /*
@@ -240,10 +240,10 @@ export const createScroller = (element: HTMLElement | null, context: Context, on
 
 	resize()
 
-	const scroller = {
-		/** Called by the clock every frame. Not for site code. */
-		raf,
+	/* what the clock calls: kept off the scroller, which is the site's */
+	const stepper: Stepper = { raf }
 
+	const scroller = {
 		/** Scroll to a position, selector or element. Resolves on landing, and also when anything interrupts it. Works through locks. */
 		to,
 
@@ -265,7 +265,7 @@ export const createScroller = (element: HTMLElement | null, context: Context, on
 			events.removeEventListener('scroll', onNativeScroll)
 			if (!element) removeEventListener('resize', resize)
 			root.style.overflow = ''
-			context.steppers.delete(scroller)
+			context.steppers.delete(stepper)
 		},
 
 		/** Where the page is drawn, px. */
@@ -286,7 +286,7 @@ export const createScroller = (element: HTMLElement | null, context: Context, on
 		get locks() { return [...locks] },
 	}
 
-	context.steppers.add(scroller)
+	context.steppers.add(stepper)
 
 	return scroller
 }
