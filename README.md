@@ -1,107 +1,153 @@
 # @alpacka/scroll
 
-Two scroll modes on one clock.
+Scroll in two modes, both on one `requestAnimationFrame`:
 
-- **smooth**: the browser's own scroll, with the wheel eased over it, plus named locks and a pin for page transitions.
-- **virtual**: nothing scrolls natively. Input becomes deltas, and columns move: clamped, infinite, or horizontal strips of GL planes.
+- `smooth()` keeps the browser's scroll and eases the mouse wheel. It adds named locks, scroll-to and a pin for page transitions.
+- `virtual()` turns native scroll off. Wheel, touch and keys become deltas, and the deltas move columns: clamped, looping or horizontal. Made for pages drawn in WebGL.
 
-## For agents
+No dependencies and no framework code. Types included.
 
-The package ships its own agent docs:
-- **`AGENTS.md`**: where to start, and how to point a site's agents at it.
-- **`skills/alpacka-scroll/`**: a skill with the mode choice, Nuxt plugins and composables, recipes, rules, and a headless-Chrome test driver. Copy it into a site's `.claude/skills/` to load it as a skill.
+```bash
+npm i @alpacka/scroll
+```
 
-Every public option, method and getter carries its unit and default in `dist/*.d.ts`.
+## Frameworks
+
+It runs anywhere there is a document. Make one instance per page, in the browser, and destroy it when the page goes. Importing the package on a server is safe. Calling `smooth()` or `virtual()` there is not.
+
+- Plain script: the examples below, as they are.
+- Nuxt: a client plugin that provides the instance, and composables for a column and a scoped panel.
+- Astro: a script module. With `<ClientRouter />` it makes a new instance on every navigation.
+- React and Next: a provider, `useScroll()` and `useColumn()`. Works under StrictMode and the App Router.
+
+The files are in `skills/alpacka-scroll/reference/`. Copy the one for your framework.
 
 ## smooth
 
 ```js
 import { smooth } from '@alpacka/scroll'
 
-const scroll = smooth()            // { ease = 0.1 }
+const scroll = smooth({ ease: 0.1 })
 
-scroll.on('tick', ({ y, time, ratio, still }) => {})
-scroll.on('scroll', ({ y, direction }) => {})
+scroll.on('tick', ({ y, time, ratio, still }) => {})   // every frame
+scroll.on('scroll', ({ y, direction }) => {})          // when the position changes
 
-scroll.y · target · velocity · direction · max · progress · still · locks
-
-scroll.to(500 | '#id' | el, { duration, ease, immediate })   // → Promise
-scroll.reset(y = 0)
-scroll.resize()
-scroll.lock('panel') / unlock('panel')
-scroll.hold()                      // → release
-scroll.pin(leavingPage, y = 0)
-scroll.scope(box)                  // the same scroller on a box → .destroy()
+scroll.to(500)                         // px, a selector or an element
+scroll.to('#work', { duration: 1, ease, immediate: false })
+scroll.reset(0)                        // jump there, no travel
+scroll.resize()                        // re-measure the scroll length
+scroll.lock('menu')                    // stop the visitor scrolling
+scroll.unlock('menu')
+const release = scroll.hold()          // the same, without a name
+scroll.pin(leavingPage, 0)             // page transitions, see below
+const panel = scroll.scope(box)        // the same scroller on an overflow box
+scroll.destroy()
 ```
 
-- **Only the wheel is smoothed.** Touch is never listened to; keys, the scrollbar, find-in-page, focus, anchors and scroll anchoring scroll natively.
-- **Foreign scrolls take over.** A position that is not the one last written was somebody else, and the scroller follows it at once, even mid-ease.
-- **Notches ramp.** A mouse wheel's lone step is spooled into the target over frames instead of landing whole, so the page ramps into it instead of kicking off at full speed.
-- **Nested boxes need no markers.** A box under the pointer that can still scroll the wheel's way scrolls natively. At its end it hands the wheel on, as the browser chains it. At the page's own ends the wheel is the browser's too, so it bounces.
-- **Locks are named.** The page moves again when the last owner lets go. A lock is `overflow: hidden` on the root, so a panel over a locked page scrolls without being marked. It holds only the visitor's input: `to()`, `reset()` and `pin()` still move the page.
-- **A locked page's wheel is cancelled, not let through.** A box under the pointer that can scroll still takes it. The browser dispatches the rest of a gesture uncancelable when its first wheel is not cancelled, so a trackpad gesture let through under a lock and still running when the lock lifts would scroll natively; cancelled, it stays the scroller's and eases on.
-- **`to()` returns a Promise.** It resolves when it lands, and also when anything interrupts it (a wheel, a lock, a foreign scroll), so nothing waits forever.
-- **`velocity` is px per 60fps frame**, measured once a frame for every source, whatever the display's refresh rate. Multiply by `ratio` for the pixels moved this frame.
-- **`pin(el, y = 0)`** takes a leaving page out of flow and resets the scroll in the same breath, so neither page moves. The leaving page ends up `absolute` at `top: landing − scroll`. It pins the page's `[data-pin]` wrapper when it has one, so fixed chrome kept outside the wrapper stays on the viewport. A page that is already `position: fixed` only has the scroll moved. To land anywhere but the top, pin once the arriving page is in.
+Read-only: `y`, `target`, `velocity`, `direction`, `max`, `progress`, `still`, `locks`.
+
+- Only the wheel is eased. Touch, keys, the scrollbar, anchors and find-in-page scroll natively.
+- If anything else moves the page, the scroller follows it at once, even mid-ease.
+- A mouse wheel notch is spread over a few frames, so the page ramps into it.
+- A nested box that can scroll takes the wheel while the pointer is over it and passes it on at its end. It needs no markup.
+- `lock(name)` sets `overflow: hidden` on the root. The page scrolls again when every name is unlocked. A lock stops the visitor only: `to()`, `reset()` and `pin()` still move the page.
+- `to()` returns a Promise. It resolves when it lands, and also when a wheel, a lock or a native scroll interrupts it, so awaiting it never hangs. `duration` is in seconds.
+- `velocity` is px per 60fps frame, at any refresh rate. Multiply by the tick's `ratio` for px moved this frame.
+- `ratio` is the frame's length in 60fps frames. `time` is in seconds.
+
+### pin
+
+For a page transition with both pages on screen. `pin(el, y = 0)` takes the leaving page out of flow and resets the scroll in the same call, so neither page jumps. The leaving page becomes `position: absolute`, offset by the scroll it had.
+
+- If the page has a `[data-pin]` wrapper, the wrapper is pinned, and fixed elements outside it stay on the viewport.
+- A page that is already `position: fixed` only has the scroll reset.
+- To land anywhere but the top, pin after the new page is in.
 
 ## virtual
 
 ```js
 import { virtual } from '@alpacka/scroll'
 
-const scroll = virtual()                         // { reducedMotion = the visitor's prefers-reduced-motion }
+const scroll = virtual()
 
-scroll.on('tick', ({ time, ratio }) => {})       // after the columns step
-scroll.on('input', ({ x, y, e }) => {})          // every delta, after the columns, with its event
-scroll.lock('loader') / unlock('loader')
-scroll.hold()                                    // → release
-scroll.push(dy, dx, e?)                          // another input device — a mouse drag
-scroll.across(() => claims)                      // cancel sideways wheels (the back gesture) → off
-scroll.claimed(keyEvent)                         // is the key the focused field's
+scroll.on('tick', ({ time, ratio }) => {})     // every frame, after the columns step
+scroll.on('input', ({ x, y, e }) => {})        // every delta, with its event
+
+scroll.lock('loader')
+scroll.unlock('loader')
+const release = scroll.hold()
+scroll.push(dy, dx, e)                         // feed it a delta, e.g. from a mouse drag
+const off = scroll.across(() => true)          // cancel sideways wheels (the back gesture)
+scroll.claimed(keyEvent)                       // is this key for a focused field, not for scrolling
+scroll.destroy()
 
 const col = scroll.column({
-	el,                // whose children move
-	box,               // what "on screen" means — the viewport without one
-	x: false,          // a strip; a vertical wheel drives it too
-	loop: true,        // wrap; false: the children stop at the ends
-	whole: false,      // move el itself in one transform between ends — the clamped column
-	lead: null,        // moves WITH the children, first in the cycle
-	line: null,        // () => viewport px of the reading line a re-measure holds; the box's middle without
-	ease: 0.1,
-	reach: 0,          // soft ceiling on the gap, in box sizes
+	el,                // its children move
+	box,               // what counts as on screen. Default: the viewport
+	x: false,          // horizontal. A vertical wheel drives it too
+	loop: true,        // wrap for ever. false: stop at the ends
+	whole: false,      // move el itself in one transform, between ends
+	lead: null,        // an element outside el that moves with the children
+	line: null,        // () => viewport px a re-measure holds still. Default: the box's middle
+	ease: 0.1,         // share of the remaining distance per 60fps frame
+	reach: 0,          // soft limit on target minus position, in box sizes. 0: none
 	overscan: 0.5,     // how far past the box a child stays live, in box sizes
-	bleed: null,       // (box) => px past the leading edge a child travels before it wraps
-	grab: false,       // a press catches it coasting; on touch, a second flick the same way resumes
-	enabled: true,     // off: frozen; back on, resumes where it stands
-	listen: true,      // off: input passes it by, it still eases
-	transforms: true,  // off: nothing is written to the DOM; _vrect and _parked still go out
+	bleed: null,       // (box) => px a child travels past the leading edge before it wraps
+	grab: false,       // a press stops a coasting column
+	enabled: true,     // false: frozen
+	listen: true,      // false: ignores input, still eases
+	transforms: true,  // false: writes nothing to the DOM
 })
 
-col.y · target · gap · max · span · progress · caught
-col.to(px, now?)                  // a position; with now, no travel
-col.add(dx, dy)                   // move it by code — a drift; ignores listen
-col.center(i, line?, force?)      // child i in the middle (or `line` px in), no travel
-col.seek(i, line?)                // the same, glided to, the nearest lap → distance added
-col.measure() · set({ … })
-col.destroy({ keep? })            // stop; keep: leave every transform, _vrect and _parked as it stands
+col.to(px, now)                 // set the target. now: be there with no travel
+col.add(dx, dy)                 // move the target by code. Ignores listen
+col.center(i, line, force)      // child i in the middle, no travel
+col.seek(i, line)               // the same, eased, by the nearest lap. Returns the distance
+col.measure()                   // re-read the layout
+col.set({ listen: false })      // change options
+col.destroy({ keep: false })
 ```
 
-- **The document is fixed.** `<html>` and `<body>` are `position: fixed; overflow: hidden; touch-action: none`. The last is what claims the gesture from Safari.
-- **Input becomes deltas.** Wheel ×1.25 (a notch ×2 on top, spooled), arrow keys 100px, page keys and space 0.9 viewport. A finger is vertical only, ×3.25, with one throw ×35 when the last finger lifts. It follows one finger by identifier, so a second landing never jumps. The wheel is summed through the frame and spent once, before the columns step; a finger, a key and a push go out as they arrive. A cancelled touch throws nothing.
-- **Locked or held, nothing moves and nothing banks.** A wheel rolled behind a loader is dropped.
-- **A box that scrolls natively keeps its gesture**, latched the way the browser latches: the wheel for a whole gesture that starts over a box that can still go its way, and the finger for a whole touch that starts in one.
-- **A column clamps its target, never the eased value**, so overscroll banks nothing. `gap` (target − eased) is the momentum every deformation reads.
-- **Every child moves on its own.** With `loop` each child wraps around the content's span (scroll size plus gap, padding included), so there is no cloned content and no second plane or texture. With `whole` the element moves instead, and its children's transforms stay free for whatever animates them.
-- **The GL mirror gets two expandos.** `_vrect` is each child's on-screen rect, derived rather than read back. `_parked` is raised one frame after a child's last transform past the overscan, so the mirror takes the resting rect first.
-- **`transforms: false` is for a page drawn wholly in GL.** The column still steps, wraps and parks, and still publishes `_vrect` and `_parked`, but writes no transform: the elements stay where the layout put them and only the mirror moves. Nothing in the DOM follows the column then, so there is no hit testing on the children and no fallback to show without the GL layer. A transform somebody else put on a child is left alone. With `whole` there is no `_vrect`: place the element yourself from `y`.
-- **A re-measure keeps the reader in place.** Whatever sits on the reading line stays there, as a share of its pitch, with laps and momentum included. That covers pictures decoding, a font swapping, and a box settling late.
-- **Between ends, a wall wins over the reader.** A column resting at its top or far end, or coasting into one, is still there after a re-measure, still coasting; a rotation or a taller box never moves it off. Any other seat past an end is clamped to it. Only a column just switched from `loop` to ends brings a value laps away back into the first lap.
-- **A forced placement parks two frames later.** `measure()`, `to(px, true)` and `center()` lay every child out live; the next frame gives each child past the overscan its resting transform, and the one after raises `_parked`, as when the column moves it out.
-- **`destroy({ keep: true })` leaves the children where they stand.** It stops listening, observing and stepping without clearing a transform, `_vrect` or `_parked`. Use it when the element is going anyway but stays on screen a while first: a page leaving under a transition, which Vue unmounts at the start of its leave. A plain `destroy()` clears, and can follow a kept one.
-- **Turning a column back on** (`set({ enabled: true })`) resumes from where it stands, so a target that arrived while it was off does not ease in.
+Read-only on a column: `y`, `target`, `gap`, `max`, `span`, `progress`, `caught`.
 
-## Both
+- `virtual()` sets `position: fixed; overflow: hidden; touch-action: none` on `<html>` and `<body>`.
+- Input sizes: wheel ×1.25 (a mouse notch ×2 on top, spread over frames), arrow keys 100px, page keys and space 0.9 of the viewport. Touch is vertical only, ×3.25, with one throw when the finger lifts.
+- While locked or held, input is dropped, not saved.
+- An element that scrolls natively keeps its own wheel and touch.
+- The target is clamped, not the eased position, so overscroll stores nothing. `gap` is target minus position: use it as the speed signal for a deformation.
+- With `loop`, each child wraps on its own around the content's length. Nothing is cloned.
+- With `whole`, one transform goes on `el` and its children are left alone, free to be animated by something else.
+- A column measures itself when its element or box resizes. A re-measure keeps whatever is on the reading line in place, and a column resting at an end stays at that end.
 
-The clock is the page's one `requestAnimationFrame`. Everything steps on it, then `tick` goes out with `ratio`, the frame's length in 60fps frames. Under `prefers-reduced-motion`, smooth leaves the wheel to the browser and lands every `to()` at once, and a column moves without easing: its `gap` stays 0 and a finger's throw lands in one frame. `virtual({ reducedMotion: false })` keeps the easing for every visitor, for a site that answers reduced motion itself; `true` drops it for every visitor.
+### For a WebGL layer
 
-`playground/virtual.html` (serve the folder) has a looping column, a clamped one and a strip. Add `?test` to step the clock by hand with `step(n)`, and to load the column checks in `playground/tests.js` as `runTests()`. `playground/test-steps.mjs` runs them headless through `skills/alpacka-scroll/reference/cdp.mjs`, with and without reduced motion.
+Each child gets two properties to read instead of the DOM:
+
+- `_vrect`: the child's on-screen rect, `{ left, top, width, height }`.
+- `_parked`: true once the child is past the overscan and can be skipped.
+
+`transforms: false` is for a page drawn entirely in WebGL. The column still steps, wraps and sets `_vrect` and `_parked`, but writes no transform, so the elements stay where the layout put them. That means no hit testing on the children and nothing to show without the WebGL layer. With `whole` there is no `_vrect`: place the element from `col.y`.
+
+### Unmounting
+
+`destroy()` clears every transform the column wrote. `destroy({ keep: true })` stops the column and leaves them. Use it when the element stays on screen for a while after unmount, such as a page leaving under a transition.
+
+## Reduced motion
+
+Under `prefers-reduced-motion`, smooth leaves the wheel to the browser and `to()` lands at once. A virtual column moves without easing, so its `gap` stays 0.
+
+`virtual({ reducedMotion: false })` keeps the easing for everyone, for a site that handles reduced motion itself. `true` removes it for everyone.
+
+## Playground and tests
+
+Serve the folder and open `playground/virtual.html`: a looping column, a clamped one and a strip. With `?test` the clock is stepped by hand (`step(n)`) and `runTests()` runs the checks in `playground/tests.js`. `playground/test-steps.mjs` runs them in headless Chrome.
+
+## Agent skill
+
+The package ships `AGENTS.md` and a skill in `skills/alpacka-scroll/`: which mode to pick, the wiring for a plain script, Nuxt, Astro and React, recipes, and a headless Chrome test driver. Copy the folder into a project's `.claude/skills/` to use it.
+
+Every option, method and getter is documented in `dist/*.d.ts` with its unit and default.
+
+## License
+
+MIT

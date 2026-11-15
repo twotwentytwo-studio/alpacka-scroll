@@ -1,6 +1,6 @@
 ---
 name: alpacka-scroll
-description: How to wire @alpacka/scroll into a site — a smooth-wheel replacement for Lenis and a virtual scroll for full-WebGL pages, on one rAF clock. SMOOTH is the browser's native scroll with only the wheel eased, plus named locks, hold(), pin() for page transitions, scope() for panels and to() returning a Promise. VIRTUAL is a fixed document where wheel, finger, keys and push() become deltas driving columns; one column() covers infinite columns, clamped panels, finite walls and horizontal strips, with _vrect/_parked for a DOM-mirrored GL layer. Use when adding smooth or virtual scroll to a site (Nuxt recipes included), replacing Lenis, building a scrolling column or strip of GL planes, locking scroll under a panel or intro, pinning a leaving page in a page transition, or testing scroll in headless Chrome.
+description: How to wire @alpacka/scroll into a site — a smooth-wheel replacement for Lenis and a virtual scroll for full-WebGL pages, on one rAF clock. SMOOTH is the browser's native scroll with only the wheel eased, plus named locks, hold(), pin() for page transitions, scope() for panels and to() returning a Promise. VIRTUAL is a fixed document where wheel, finger, keys and push() become deltas driving columns; one column() covers infinite columns, clamped panels, finite walls and horizontal strips, with _vrect/_parked for a DOM-mirrored GL layer. Use when adding smooth or virtual scroll to a site (recipes for a plain script, Nuxt, Astro and React / Next), replacing Lenis, building a scrolling column or strip of GL planes, locking scroll under a panel or intro, pinning a leaving page in a page transition, or testing scroll in headless Chrome.
 ---
 
 # What it is
@@ -24,9 +24,32 @@ The code is in `src/`; see the source map at the end. This skill is the wiring.
 
 Either mode owns the page's single `requestAnimationFrame`. Run everything continuous on its `tick`, and do not start another rAF loop.
 
+# Pick the wiring
+
+The package has no framework code. Each framework needs the same three things: one instance per page, made in the browser, and destroyed when its page or component goes. Importing the package on a server is safe. Calling `smooth()` or `virtual()` there is not: both read the document.
+
+- **Plain script.** Make the instance in one module and import it everywhere else:
+
+  ```ts
+  // scroll.ts
+  import { smooth } from '@alpacka/scroll'
+
+  export const scroll = smooth()
+  ```
+
+  Load it from a module script, which runs once the document is parsed. A classic script in `<head>` runs before `<body>` exists.
+- **Nuxt.** `reference/smooth-plugin.client.ts` or `reference/virtual-plugin.client.ts`, with `reference/useColumn.ts` and `reference/useScopedScroll.ts`. The instance is `$scroll`.
+- **Astro.** `reference/astro-scroll.ts`. Scripts ask for the instance with `getScroll()`. Under `<ClientRouter />` the recipe makes a new instance on every navigation, because the router replaces `<body>` and every attribute on `<html>`, where both modes keep state. Set each page up on `astro:page-load`. A lock held across a navigation is dropped with the old instance.
+- **React and Next.** `reference/react-smooth.tsx` or `reference/react-virtual.tsx`: a `ScrollProvider`, `useScroll()`, and `useScopedScroll()` or `useColumn()`. `useScroll()` is null until the provider has mounted, so every effect that uses it lists it as a dependency. The smooth recipe sets `history.scrollRestoration` back to `'auto'`: Next leaves back and forward to the browser, and `smooth()` sets it to `'manual'`.
+
+The Vue rules below have a React and an Astro side:
+
+- **Unmounting a column.** The Vue and Astro recipes pass `{ keep: true }`: the element leaves with its page. React has removed the element by the time an effect cleans up, and StrictMode makes the column twice on the same element, so the React recipe calls a plain `destroy()`. A column made on an element that still carries another column's transforms would measure them.
+- **Two columns over the same children.** In React, call `set({ enabled })` straight from the media query's listener. A state update lands a task later, after both columns have measured.
+
 # Smooth mode
 
-Plugin: `reference/smooth-plugin.client.ts` (Nuxt; includes gsap and ScrollTrigger). The core:
+Nuxt plugin: `reference/smooth-plugin.client.ts` (includes gsap and ScrollTrigger). Other frameworks: see Pick the wiring. The core:
 
 ```ts
 const scroll = smooth()                        // { ease = 0.1 }
@@ -38,7 +61,7 @@ Recipes:
 
 - **Scroll somewhere.** Use `scroll.to(500 | '#id' | el, { duration, ease, immediate })`. It returns a Promise that resolves on landing, and also when a wheel, a lock or a native scroll interrupts it, so awaiting it never hangs. It works through locks. Under reduced motion it is always immediate.
 - **A panel over the page.** Call `scroll.lock('menu')` when it opens and `scroll.unlock('menu')` as it STARTS to close, not once it is gone, so the page answers the wheel under the closing wipe. Locks are named, and the page moves again only when the last name is gone, so an intro, a panel and a transition can overlap without knowing about each other. A lock sets `overflow: hidden` on `<html>` (with `scrollbar-gutter: stable`, set for you), so a native-scrolling panel over a locked page needs no marker attributes.
-- **A panel that scrolls itself, smoothed.** Use `scroll.scope(box)`. It is the same scroller on the box (the box's first child is the content), stepped on the same clock. Call its `destroy()` when the box goes. For Vue: `reference/useScopedScroll.ts`.
+- **A panel that scrolls itself, smoothed.** Use `scroll.scope(box)`. It is the same scroller on the box (the box's first child is the content), stepped on the same clock. Call its `destroy()` when the box goes. For Vue: `reference/useScopedScroll.ts`. For React: `useScopedScroll` in `reference/react-smooth.tsx`.
 - **A page transition with both pages on screen.** Call `scroll.pin(leavingEl, y = 0)` in `onBeforeLeave`. It takes the leaving page out of flow (its `[data-pin]` wrapper when it has one, so fixed chrome outside the wrapper stays on the viewport) and resets the scroll in one call. The offset goes in `top`, leaving `transform` to the transition, so neither page moves. Keep the leave callback's `done` until your exit animation finishes. Expose a `flush()` that your route middleware calls before every navigation, and have it call `done` and unlock, or an interrupted transition strands a pinned page on screen.
 - **A swap the trackpad must not scroll through.** Call `const release = scroll.hold()` and release it when the swap is done. It swallows the wheel without a named lock.
 - **GL that reads scroll speed.** `velocity` is px per 60fps frame, the same at any refresh rate. For px moved this frame, use `velocity * ratio` inside a tick.
@@ -49,7 +72,7 @@ Touch is never listened to in this mode, and must not be smoothed. On touch the 
 
 # Virtual mode
 
-Plugin: `reference/virtual-plugin.client.ts` (Nuxt; includes an optional bridge for a site that already has an event bus). The core:
+Nuxt plugin: `reference/virtual-plugin.client.ts` (includes an optional bridge for a site that already has an event bus). Other frameworks: see Pick the wiring. The core:
 
 ```ts
 const scroll = virtual()                       // fixes <html>/<body> itself; { reducedMotion } overrides the media query
@@ -75,7 +98,7 @@ Under `prefers-reduced-motion` every column moves without easing: `gap` is alway
 const col = scroll.column({ el, box })         // el's children move; box is "on screen" (default: the viewport)
 ```
 
-For Vue, use `reference/useColumn.ts`. Its runtime options take refs or getters.
+For Vue, use `reference/useColumn.ts`. Its runtime options take refs or getters. For React, use `useColumn` in `reference/react-virtual.tsx`. Its `enabled`, `loop` and `listen` follow the props.
 
 Configurations:
 
@@ -159,6 +182,9 @@ What to check:
 
 - `reference/smooth-plugin.client.ts`: Nuxt plugin, smooth mode, with gsap and ScrollTrigger
 - `reference/virtual-plugin.client.ts`: Nuxt plugin, virtual mode, with a boot lock and an optional bus bridge
-- `reference/useColumn.ts`: a virtual column as a composable, with reactive options
-- `reference/useScopedScroll.ts`: `scope()` for a panel, as a composable
+- `reference/useColumn.ts`: a virtual column as a Vue composable, with reactive options
+- `reference/useScopedScroll.ts`: `scope()` for a panel, as a Vue composable
+- `reference/astro-scroll.ts`: Astro, either mode, with and without `<ClientRouter />`
+- `reference/react-smooth.tsx`: React and Next, smooth mode: provider, `useScroll`, `useScopedScroll`
+- `reference/react-virtual.tsx`: React and Next, virtual mode: provider, `useScroll`, `useColumn`
 - `reference/cdp.mjs`, `reference/cdp-example.mjs`: the headless driver and a steps file

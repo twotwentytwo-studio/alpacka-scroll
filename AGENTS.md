@@ -2,7 +2,7 @@
 
 ## Using it in a site
 
-Read `skills/alpacka-scroll/SKILL.md`. It has the mode choice, Nuxt plugins and composables in `reference/`, recipes, the rules learned the hard way, and how to test scroll in headless Chrome.
+Read `skills/alpacka-scroll/SKILL.md`. It has the mode choice, the wiring for a plain script, Nuxt, Astro and React / Next in `reference/`, recipes, the rules learned the hard way, and how to test scroll in headless Chrome.
 
 The contract is `README.md` plus the docs in `dist/*.d.ts`: every public option, method and getter carries its unit and default.
 
