@@ -1,0 +1,53 @@
+{
+	"name": "@alpacka/scroll",
+	"version": "0.3.0",
+	"description": "Smooth wheel over the browser's own scroll, and a virtual scroll for full-WebGL pages, on one rAF clock — named locks, page-transition pin, infinite columns and strips. Ships an agent skill.",
+	"keywords": [
+		"scroll",
+		"smooth-scroll",
+		"virtual-scroll",
+		"infinite-scroll",
+		"wheel",
+		"lenis-alternative",
+		"page-transition",
+		"webgl",
+		"raf",
+		"dom",
+		"agent-skill"
+	],
+	"license": "MIT",
+	"author": "Jesper Landberg",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"dist",
+		"src",
+		"skills",
+		"playground",
+		"AGENTS.md",
+		"README.md"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"watch": "tsc -p tsconfig.build.json --watch",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"prepack": "npm run build"
+	},
+	"devDependencies": {
+		"typescript": "^5"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

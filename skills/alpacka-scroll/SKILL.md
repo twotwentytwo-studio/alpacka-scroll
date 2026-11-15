@@ -1,0 +1,164 @@
+---
+name: alpacka-scroll
+description: How to wire @alpacka/scroll into a site — a smooth-wheel replacement for Lenis and a virtual scroll for full-WebGL pages, on one rAF clock. SMOOTH is the browser's native scroll with only the wheel eased, plus named locks, hold(), pin() for page transitions, scope() for panels and to() returning a Promise. VIRTUAL is a fixed document where wheel, finger, keys and push() become deltas driving columns; one column() covers infinite columns, clamped panels, finite walls and horizontal strips, with _vrect/_parked for a DOM-mirrored GL layer. Use when adding smooth or virtual scroll to a site (Nuxt recipes included), replacing Lenis, building a scrolling column or strip of GL planes, locking scroll under a panel or intro, pinning a leaving page in a page transition, or testing scroll in headless Chrome.
+---
+
+# What it is
+
+`@alpacka/scroll` has no dependencies and is framework-free. It offers two modes, `smooth()` and `virtual()`, which share one `requestAnimationFrame` clock.
+
+```bash
+npm i @alpacka/scroll
+```
+
+The API contract lives in two places:
+- **`README.md`:** what each mode does and why.
+- **`dist/*.d.ts`:** every public option, method and getter, with its unit and default.
+
+The code is in `src/`; see the source map at the end. This skill is the wiring.
+
+# Pick the mode
+
+- **`smooth()`**: a normal document that the browser scrolls. Use it for ordinary sites, including a WebGL layer drawn over a native scroll. Find-in-page, anchors, `position: sticky`, keyboard, scrollbar and touch all stay native. Only the wheel is eased.
+- **`virtual()`**: nothing scrolls natively, and every page is a fixed `inset-0` stage. Use it for full-WebGL sites, and for anything infinite: a wrapping column or strip of GL planes, where a cloned item would mean a second plane and a second texture.
+
+Either mode owns the page's single `requestAnimationFrame`. Run everything continuous on its `tick`, and do not start another rAF loop.
+
+# Smooth mode
+
+Plugin: `reference/smooth-plugin.client.ts` (Nuxt; includes gsap and ScrollTrigger). The core:
+
+```ts
+const scroll = smooth()                        // { ease = 0.1 }
+scroll.on('tick', ({ y, time, ratio, still }) => {})
+scroll.on('scroll', ({ y, direction }) => {})
+```
+
+Recipes:
+
+- **Scroll somewhere.** Use `scroll.to(500 | '#id' | el, { duration, ease, immediate })`. It returns a Promise that resolves on landing, and also when a wheel, a lock or a native scroll interrupts it, so awaiting it never hangs. It works through locks. Under reduced motion it is always immediate.
+- **A panel over the page.** Call `scroll.lock('menu')` when it opens and `scroll.unlock('menu')` as it STARTS to close, not once it is gone, so the page answers the wheel under the closing wipe. Locks are named, and the page moves again only when the last name is gone, so an intro, a panel and a transition can overlap without knowing about each other. A lock sets `overflow: hidden` on `<html>` (with `scrollbar-gutter: stable`, set for you), so a native-scrolling panel over a locked page needs no marker attributes.
+- **A panel that scrolls itself, smoothed.** Use `scroll.scope(box)`. It is the same scroller on the box (the box's first child is the content), stepped on the same clock. Call its `destroy()` when the box goes. For Vue: `reference/useScopedScroll.ts`.
+- **A page transition with both pages on screen.** Call `scroll.pin(leavingEl, y = 0)` in `onBeforeLeave`. It takes the leaving page out of flow (its `[data-pin]` wrapper when it has one, so fixed chrome outside the wrapper stays on the viewport) and resets the scroll in one call. The offset goes in `top`, leaving `transform` to the transition, so neither page moves. Keep the leave callback's `done` until your exit animation finishes. Expose a `flush()` that your route middleware calls before every navigation, and have it call `done` and unlock, or an interrupted transition strands a pinned page on screen.
+- **A swap the trackpad must not scroll through.** Call `const release = scroll.hold()` and release it when the swap is done. It swallows the wheel without a named lock.
+- **GL that reads scroll speed.** `velocity` is px per 60fps frame, the same at any refresh rate. For px moved this frame, use `velocity * ratio` inside a tick.
+- **ScrollTrigger.** Call `ScrollTrigger.update()` on `'scroll'`. Call `ScrollTrigger.refresh()` on resize, and before `reset()` or `pin()`: a refresh puts back the scroll position it measured from.
+- **Getters:** `y`, `target`, `velocity`, `direction`, `max`, `progress` (0 when the page is too short to scroll), `still`, `locks`.
+
+Touch is never listened to in this mode, and must not be smoothed. On touch the compositor owns the scroll, and anything written from the scroll position on the main thread lags it by a frame.
+
+# Virtual mode
+
+Plugin: `reference/virtual-plugin.client.ts` (Nuxt; includes an optional bridge for a site that already has an event bus). The core:
+
+```ts
+const scroll = virtual()                       // fixes <html>/<body> itself; { reducedMotion } overrides the media query
+scroll.on('tick', ({ time, ratio }) => {})     // after the columns stepped
+scroll.on('input', ({ x, y, e }) => {})        // every delta, after the columns took it
+```
+
+What the input does:
+- **Wheel:** ×1.25. A notch gets another ×2 and is spooled over frames.
+- **Finger:** vertical only, ×3.25, with one throw ×35 when the last finger lifts. It follows one finger by identifier.
+- **Keys:** arrows 100px; page keys and space 0.9 of the viewport.
+- **`push(dy, dx, e?)`:** any other input device, such as a mouse drag.
+
+Locked or held, nothing moves and nothing is saved up. A gesture that starts over a box that scrolls natively stays with that box.
+
+Under `prefers-reduced-motion` every column moves without easing: `gap` is always 0, so a GL deformation that reads it never moves, and a finger's throw lands in one frame. That is a choice about the whole site's motion, so make it on purpose. Either leave the default, or pass `virtual({ reducedMotion: false })` to keep the easing for everyone, and answer reduced motion in the site itself.
+
+`across(claims)` cancels sideways wheels while `claims()` returns true, so a trackpad swipe that something on the page uses never turns into the browser's back gesture. `claimed(keyEvent)` says whether a key belongs to a focused field rather than to scrolling.
+
+## Columns
+
+```ts
+const col = scroll.column({ el, box })         // el's children move; box is "on screen" (default: the viewport)
+```
+
+For Vue, use `reference/useColumn.ts`. Its runtime options take refs or getters.
+
+Configurations:
+
+| want | options |
+| --- | --- |
+| infinite column (wraps, no clones) | default (`loop: true`) |
+| finite column, children still parked for GL | `loop: false` |
+| clamped panel: one transform on `el`, children untouched | `whole: true` |
+| horizontal strip that a vertical wheel drives too | `x: true`, often `reach: 1` |
+| walls on a mouse, a loop on a finger | `loop` from a getter (useColumn) or `set({ loop })` |
+| copy that moves with the pictures without being one | `lead: el` |
+| re-measure keeps the item under a line, not the middle | `line: () => viewportPx` |
+| tap catches a coasting column; a re-flick on touch resumes it | `grab: true`, then read `col.caught` to refuse that tap's click |
+| a deformed surface that bends what is past the edge into view | raise `overscan`; `bleed: (box) => px` |
+| freeze it (another column owns the same children) | `set({ enabled: false })`; switched back on, it resumes where it stands |
+| input passes by, it still eases | `set({ listen: false })` |
+| a page drawn wholly in GL: no transforms written, `_vrect` and `_parked` still published | `transforms: false` |
+
+Methods:
+- `col.to(px, now?)`: set a position. With `now` there is no travel.
+- `col.add(dx, dy)`: move it by code, such as a drift. It ignores `listen`.
+- `col.center(i, line?, force?)`: put child `i` in the middle, or its leading edge `line` px in, with no travel.
+- `col.seek(i, line?)`: the same, but glided to, and at the nearest lap. It returns the distance added.
+- `col.measure()`, `col.set({ … })`.
+- `col.destroy({ keep? })`: stop listening, observing and stepping. A plain `destroy()` clears every transform, `_vrect` and `_parked` it wrote. With `keep: true` it leaves them as they stand, which is what an unmount wants (see the rules).
+
+A re-measure keeps whatever sits on the reading line in place. Between ends a wall wins: a column resting at its top or far end, or coasting into one, stays there through a rotation or a resize. After `measure()`, `to(px, true)` or `center()`, children past the overscan park two frames later, as they do when the column moves them out.
+
+Getters: `y`, `target`, `gap` (target − current, the momentum a deformation reads), `max`, `span`, `progress`, `caught`.
+
+Two expandos go to a DOM-mirrored GL layer:
+- **`el._vrect`:** each child's on-screen rect, derived rather than read, so the mirror never reads layout straight after these writes.
+- **`el._parked`:** raised one frame after a child's last transform past the overscan.
+
+# Rules — each one broke something
+
+- **Watch a component's reactive state from `onMounted`, never during setup.** A getter can name state the component declares further down, and evaluating it early throws (a TDZ error), which takes the whole page down.
+- **Never patch methods onto an instance, and never spread one.** `Object.assign(scroll, { resize })`, where the new `resize` calls `scroll.resize()`, calls itself forever. `{ ...scroll }` freezes every getter at its value at that moment. Provide the instance as it is, and put site extras in their own functions.
+- **Use `whole: true` for a panel whose children something else animates.** Per-child transforms would overwrite the children's own (e.g. gsap) transforms.
+- **A column measures itself** when its element or box resizes, on a ResizeObserver. Children that change while the element keeps its size (cards growing inside a fixed-width track) need a manual `col.measure()`.
+- **`velocity` (smooth) is a rate; `gap` (column) is a distance still owed.** Neither is "px this frame". In smooth mode, multiply by `ratio` for that.
+- **Locks hold input, not code.** `to()`, `reset()`, `pin()`, `col.to()`, `col.add()` and `col.center()` all still move things while locked.
+- **A boot lock needs its unlock.** If the plugin calls `lock('boot')`, the end of the intro must call `unlock('boot')`, or nothing ever scrolls.
+- **Destroy on unmount with `{ keep: true }`.** Vue runs `onBeforeUnmount` at the START of a leave transition, while the leaving page is still on screen. A plain `destroy()` there clears every transform, so the leaving page snaps back to scroll 0 for the whole transition. The element goes with the component anyway, so there is nothing to clear.
+- **Two columns over the same children** (a strip on a desktop, a stack on a phone): flip `enabled` synchronously, in the same task as the layout change, before either column measures. Each column re-measures from its own ResizeObserver and window `resize` the moment the layout changes. A column still enabled under the other's layout measures it along its own axis, where every child starts at the same place. Switched back on, it seats from those collapsed slots and lands on the last child. A debounced flag or a `flush: 'post'` watch is too late.
+- **Pose from `_vrect` on `'tick'`, never in a gsap `onUpdate`.** gsap's ticker runs before the columns step. A tween's `onUpdate` therefore reads last frame's `_vrect`, while the mirror around it reads this frame's. A plane flying onto a moving card trails it by a frame, then hops when it lands. Keep the tween as a clock, and write the pose on `'tick'`.
+
+# Testing
+
+An in-app or background browser pane often runs no animation frames, and then no scroll events or ResizeObserver callbacks either. A scroll test there proves nothing. Drive headless Chrome over the DevTools protocol:
+
+```bash
+node reference/cdp.mjs http://localhost:3000/ reference/cdp-example.mjs ./out
+```
+
+`cdp.mjs` needs Node 22 (for its built-in WebSocket) and Chrome. Run it with `QUIET=1` on a page that floods the console: dev-mode framework warnings can carry whole component trees, and capturing them can stall the script. Then catch errors in the page yourself, with an `error` listener read back through `evaluate`. Change `CHROME` at the top for a platform other than macOS. There are no npm installs. Headless runs real frames and has WebGPU. Steps get `evaluate`, `wheel(x, y, dy, dx)`, `shot(name)` (a PNG), `send` (raw CDP, e.g. `Input.dispatchTouchEvent`) and `sleep`. The run prints page exceptions and console errors at the end.
+
+What to check:
+- For an A/B check against the old scroll, run the same steps file against a `git worktree` of the previous branch on a second port.
+- Chrome holds back touch moves that stay within its touch slop, and merges events sent with no gap. Space touch steps about 16–40ms apart.
+- For package logic alone, `playground/virtual.html?test` swaps rAF for a hand-stepped clock, `step(n)`, and loads the column checks in `playground/tests.js` as `runTests()`. Serve the package folder, then run `node skills/alpacka-scroll/reference/cdp.mjs 'http://localhost:8000/playground/virtual.html?test' playground/test-steps.mjs` from it. It runs every check with and without reduced motion, and exits 1 on a failure.
+- Beside another agent's Chrome, give the driver a port of its own: `CDP_PORT=9811 node cdp.mjs …`. Two drivers on one port talk to the same browser.
+
+`cdp.mjs` closes its Chrome on exit, Ctrl+C included. Check for leftovers anyway: a headless Chrome still running makes macOS refuse to open the normal Chrome, because it brings the invisible instance to the front instead of opening a window. To list them, run `pgrep -fl "Google Chrome.*--headless"`. To close them, run `pkill -f "Google Chrome.*--headless"`.
+
+# Source map
+
+| file | what |
+| --- | --- |
+| `src/index.ts` | exports, and the whole API in one comment |
+| `src/core.ts` | context, `startClock`, `createBus`, `createHold` |
+| `src/wheel.ts` | `wheelReader` (px + notch), `drainSpool`, `scrollsNatively`, `canScrollFurther` |
+| `src/scroller.ts` | the native scroller: wheel easing, taking over from foreign scrolls, `to` / `reset` / locks |
+| `src/smooth.ts` | `smooth()`: the page scroller, clock, `pin`, `scope`, `hold` |
+| `src/input.ts` | the virtual input: wheel sum and spool, finger, keys, latch, `across`, `claimed` |
+| `src/column.ts` | `createColumn`: wrap, ends, `whole`, parking, the reading line, grab, `seek` |
+| `src/virtual.ts` | `virtual()`: the fixed document, input → columns → `'input'`, clock, locks, `reducedMotion` |
+| `playground/tests.js` | the column checks, `runTests()` on the `?test` clock; `playground/test-steps.mjs` drives them |
+
+# Reference
+
+- `reference/smooth-plugin.client.ts`: Nuxt plugin, smooth mode, with gsap and ScrollTrigger
+- `reference/virtual-plugin.client.ts`: Nuxt plugin, virtual mode, with a boot lock and an optional bus bridge
+- `reference/useColumn.ts`: a virtual column as a composable, with reactive options
+- `reference/useScopedScroll.ts`: `scope()` for a panel, as a composable
+- `reference/cdp.mjs`, `reference/cdp-example.mjs`: the headless driver and a steps file

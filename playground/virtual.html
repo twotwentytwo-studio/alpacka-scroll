@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>@alpacka/scroll — virtual</title>
+	<style>
+		* { box-sizing: border-box; margin: 0; }
+		body { font: 500 14px/1.2 system-ui, sans-serif; background: #111; color: #eee; }
+		.panel { position: absolute; overflow: hidden; outline: 1px solid #333; }
+		#loop { inset: 0 50% 220px 0; }
+		#ends { inset: 0 0 220px 50%; }
+		#strip { inset: auto 0 0 0; height: 220px; }
+		.col { display: flex; flex-direction: column; gap: 10px; padding: 10px; }
+		.row { display: flex; gap: 10px; padding: 10px; height: 100%; }
+		.item { flex: none; display: grid; place-items: center; border-radius: 6px; font-size: 32px; }
+		.col .item { height: 180px; }
+		.row .item { width: 260px; }
+		.label { position: absolute; top: 8px; left: 8px; z-index: 1; font-size: 11px; opacity: .6; }
+	</style>
+</head>
+<body>
+	<div id="loop" class="panel"><span class="label">column · loop</span><div class="col"></div></div>
+	<div id="ends" class="panel"><span class="label">column · loop: false</span><div class="col"></div></div>
+	<div id="strip" class="panel"><span class="label">strip · x</span><div class="row"></div></div>
+
+	<script type="module">
+		/* ?test: a hand-stepped clock, for checking the logic frame by frame,
+		   and the checks in tests.js as runTests(). Cancelling works, so a
+		   destroyed virtual() stops stepping as it would on the real clock. */
+		const testing = location.search.includes('test')
+
+		if (testing) {
+			const queue = new Map()
+			let lastId = 0
+			let ms = 0
+			window.requestAnimationFrame = (f) => (queue.set(++lastId, f), lastId)
+			window.cancelAnimationFrame = (id) => queue.delete(id)
+			window.step = (n = 1, dt = 1000 / 60) => {
+				for (let i = 0; i < n; i++) {
+					ms += dt
+					const due = [...queue.values()]
+					queue.clear()
+					due.forEach((f) => f(ms))
+				}
+			}
+		}
+
+		const { virtual } = await import('../dist/index.js')
+
+		const fill = (el, n, hue) => {
+			for (let i = 0; i < n; i++) {
+				const d = document.createElement('div')
+				d.className = 'item'
+				d.textContent = i
+				d.style.background = `hsl(${hue + i * 25} 45% 35%)`
+				el.append(d)
+			}
+		}
+
+		fill(document.querySelector('#loop .col'), 8, 200)
+		fill(document.querySelector('#ends .col'), 6, 20)
+		fill(document.querySelector('#strip .row'), 10, 120)
+
+		const scroll = virtual()
+		const box = (id) => document.getElementById(id)
+
+		window.scroll$ = scroll
+		window.cols = {
+			loop: scroll.column({ el: box('loop').querySelector('.col'), box: box('loop') }),
+			ends: scroll.column({ el: box('ends').querySelector('.col'), box: box('ends'), loop: false }),
+			strip: scroll.column({ el: box('strip').querySelector('.row'), box: box('strip'), x: true, reach: 1 }),
+		}
+
+		if (testing) {
+			const { runTests } = await import('./tests.js')
+			window.runTests = () => runTests({ scroll, step: window.step })
+		}
+	</script>
+</body>
+</html>
