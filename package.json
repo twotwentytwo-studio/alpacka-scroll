@@ -1,6 +1,6 @@
 {
 	"name": "@alpacka/scroll",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"description": "Smooth wheel over the browser's own scroll, and a virtual scroll for full-WebGL pages, on one rAF clock — named locks, page-transition pin, infinite columns and strips. Ships an agent skill.",
 	"keywords": [
 		"scroll",
