@@ -251,6 +251,66 @@ const checks = {
 		t.expect('drawn where it was', near(page.getBoundingClientRect().top, before), { before, after: page.getBoundingClientRect().top })
 	},
 
+	async 'the length is re-read when the pinned page leaves'(t) {
+		const scroll = make(t)
+		const page = document.querySelector('#page')
+		const { parentNode, nextSibling } = page
+		const style = page.style.cssText
+		const arriving = document.createElement('div')
+
+		arriving.style.height = '2000px'
+
+		t.cleanup.push(() => {
+			arriving.remove()
+			parentNode.insertBefore(page, nextSibling)
+			page.style.cssText = style
+		})
+
+		scroll.to(1200, { immediate: true })
+		page.after(arriving)
+		scroll.pin(page)
+		await settle()
+
+		const pinned = scroll.max
+
+		/* out of flow, the leaving page changes no watched box's size as it goes */
+		page.remove()
+		await settle()
+
+		const real = document.documentElement.scrollHeight - innerHeight
+
+		t.expect('the page got shorter', real < pinned, { pinned, real })
+		t.expect('and max follows on its own', scroll.max === real, { max: scroll.max, real })
+	},
+
+	async 'and when the pinned page is hidden'(t) {
+		const scroll = make(t)
+		const page = document.querySelector('#page')
+		const style = page.style.cssText
+		const arriving = document.createElement('div')
+
+		arriving.style.height = '2000px'
+
+		t.cleanup.push(() => {
+			arriving.remove()
+			page.style.cssText = style
+		})
+
+		scroll.to(1200, { immediate: true })
+		page.after(arriving)
+		scroll.pin(page)
+		await settle()
+
+		const pinned = scroll.max
+
+		page.style.display = 'none'
+		await settle()
+
+		const real = document.documentElement.scrollHeight - innerHeight
+
+		t.expect('max follows', real < pinned && scroll.max === real, { pinned, max: scroll.max, real })
+	},
+
 	async 'growth no observer sees is found at the end'(t) {
 		const scroll = make(t)
 		const grow = document.querySelector('#grow')

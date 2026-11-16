@@ -51,7 +51,7 @@ Read-only: `y`, `target`, `velocity`, `direction`, `max`, `progress`, `still`, `
 - A mouse wheel notch is spread over a few frames, so the page ramps into it.
 - A nested box that can scroll takes the wheel while the pointer is over it and passes it on at its end. It needs no markup.
 - `smooth()` sets `history.scrollRestoration` to `'manual'` and `scrollbar-gutter: stable` on the root, and `destroy()` puts both back. If your router leaves back and forward to the browser (Next does), set it to `'auto'` after the call: the scroller follows a restored position like any other native scroll.
-- The scroll length is re-read when the page or `<body>` changes size, on `resize()`, on `to()`, and when the wheel reaches the end, so content that grows inside a `<body>` of fixed height is still reached.
+- The scroll length is re-read when the page or `<body>` changes size, when a pinned page leaves, on `resize()`, on `to()`, and when the wheel reaches the end, so content that grows inside a `<body>` of fixed height is still reached.
 - `lock(name)` sets `overflow: hidden` on the root. The page scrolls again when every name is unlocked. A lock stops the visitor only: `to()`, `reset()` and `pin()` still move the page.
 - `to()` returns a Promise. It resolves when it lands, and also when a wheel, a lock or a native scroll interrupts it, so awaiting it never hangs. `duration` is in seconds.
 - `velocity` is px per 60fps frame, at any refresh rate. Multiply by the tick's `ratio` for px moved this frame.
@@ -64,6 +64,7 @@ For a page transition with both pages on screen. `pin(el, y = 0)` takes the leav
 - If the page has a `[data-pin]` wrapper, the wrapper is pinned, and fixed elements outside it stay on the viewport.
 - A page that is already `position: fixed` only has the scroll reset.
 - To land anywhere but the top, pin after the new page is in.
+- The scroll length is re-read when the pinned element is removed or hidden, so nothing needs calling once the transition ends.
 
 ## virtual
 

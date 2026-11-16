@@ -22,6 +22,11 @@ import { createScroller, type Scroller } from './scroller.js'
  * already `position: fixed` only has the scroll moved. To land somewhere
  * other than the top, pin once the arriving page is in — the landing is
  * clamped to what can be scrolled.
+ *
+ * Out of flow, the pinned page still adds to the scroll length, but no
+ * longer to the size of `<html>` or `<body>`, so the scroller's own observer
+ * misses it leaving. pin() watches the pinned element itself: a removed or
+ * hidden element resizes to nothing, which re-reads the length.
  */
 
 /** time in seconds; ratio is the frame's length in 60fps frames (0 on the first). */
@@ -59,6 +64,13 @@ export const smooth = ({ ease = 0.1 }: SmoothOptions = {}) => {
 	/* a lock hides the scrollbar; the gutter keeps the page from widening */
 	root.style.scrollbarGutter = 'stable'
 
+	/* pinned pages, watched until they leave the document */
+	const pinned = new ResizeObserver((entries) => {
+		page.resize()
+
+		for (const { target } of entries) if (!target.isConnected) pinned.unobserve(target)
+	})
+
 	const stopClock = startClock((time, ratio) => {
 		context.steppers.forEach((s) => s.raf(time, ratio))
 		events.emit('tick', { y: page.y, time, ratio, still: page.still })
@@ -81,17 +93,20 @@ export const smooth = ({ ease = 0.1 }: SmoothOptions = {}) => {
 		 * Take a leaving page out of flow and reset the scroll to `y` (px) in the
 		 * same call, so neither page moves. Pins the page's `[data-pin]` wrapper
 		 * if it has one; a `position: fixed` page only has the scroll moved.
+		 * The scroll length is re-read when the pinned element is removed or
+		 * hidden, so nothing needs calling after the transition.
 		 */
 		pin(el: HTMLElement, y = 0) {
-			const pinned = el.querySelector<HTMLElement>('[data-pin]') ?? el
-			const fixed = getComputedStyle(pinned).position === 'fixed'
+			const target = el.querySelector<HTMLElement>('[data-pin]') ?? el
+			const fixed = getComputedStyle(target).position === 'fixed'
 			const from = page.y
 
-			if (!fixed) Object.assign(pinned.style, { position: 'absolute', left: '0', right: '0', pointerEvents: 'none' })
+			if (fixed) return page.reset(y)
 
+			Object.assign(target.style, { position: 'absolute', left: '0', right: '0', pointerEvents: 'none' })
 			page.reset(y)
-
-			if (!fixed) pinned.style.top = `${page.y - from}px`
+			target.style.top = `${page.y - from}px`
+			pinned.observe(target)
 		},
 
 		/** The same scroller on a box that scrolls on its own (a panel), stepped on this clock. Call its destroy() when the box goes. */
@@ -100,6 +115,7 @@ export const smooth = ({ ease = 0.1 }: SmoothOptions = {}) => {
 		/** Stop the clock and the listeners, and put back the scroll restoration and scrollbar gutter it found. */
 		destroy() {
 			stopClock()
+			pinned.disconnect()
 			page.destroy()
 			history.scrollRestoration = before.restoration
 			root.style.scrollbarGutter = before.gutter
