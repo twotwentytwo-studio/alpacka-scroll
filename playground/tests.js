@@ -444,6 +444,17 @@ const checks = {
 
 		col.to(0, { immediate: true })
 		t.expect('typed into a field: the field\'s', !key('ArrowDown', field).defaultPrevented && col.target === 0, col.target)
+
+		/* a field inside a shadow root: past the root the event's target is the host */
+		const host = document.createElement('div')
+		const shadowField = document.createElement('textarea')
+		host.attachShadow({ mode: 'open' }).append(shadowField)
+		document.body.append(host)
+		t.cleanup.push(() => host.remove())
+
+		const typed = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true, composed: true })
+		shadowField.dispatchEvent(typed)
+		t.expect('typed into a field inside a shadow root: still the field\'s', !typed.defaultPrevented && col.target === 0, col.target)
 	},
 
 	async 'a finger moves it, and the last one up throws'(t) {

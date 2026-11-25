@@ -51,7 +51,9 @@ const PRESSABLE = /^(button|summary)$/i
 
 /** Does the key belong to the focused element (typing in a field, space on a button) rather than to scrolling. */
 export const claimed = (e: KeyboardEvent) => {
-	const el = e.target
+	/* the element the key was pressed in: past a shadow root `target` is the host, and
+	   a field inside a widget (a chat box, a QA composer) would read as the page */
+	const el = e.composedPath()[0] ?? e.target
 
 	if (!(el instanceof HTMLElement)) return false
 	if (el.isContentEditable || TYPING.test(el.tagName)) return true
